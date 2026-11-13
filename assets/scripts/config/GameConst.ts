@@ -122,6 +122,15 @@ export const GameConst = {
 
     /** 同款消除后上方已锁圈平滑下落最长耗时（秒） */
     matchDropMaxDurationSec: 0.26,
+
+    /** 灰盒与默认关卡倒计时（秒，GDD §3.4 为 60–90 秒） */
+    defaultLevelDurationSec: 60,
+
+    /** 倒计时最后提示变色阈值（秒） */
+    countdownUrgentSec: 10,
+
+    /** 暂停/弹窗按键点击热区外扩像素（GDD 画面铁律：点击范围比图形大） */
+    hudBtnHitPadding: 10,
 } as const;
 
 export interface RingPillarGeometry {

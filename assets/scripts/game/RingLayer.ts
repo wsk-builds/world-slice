@@ -117,6 +117,11 @@ export class RingLayer extends Component {
         }
     }
 
+    /** 重置初始放圈随机种子（重开或切关时保证可复现） */
+    resetSpawnRng(seed: number = GameConst.defaultLevelSeed): void {
+        this.spawnRng = new SeededRandom(seed ^ 0x5f3759df);
+    }
+
     /** 清空所有圈与刚体 */
     clearAll(): void {
         for (const ring of this.rings) {

@@ -34,6 +34,7 @@ export class JetButton extends Component {
 
     private readonly activeTouchIds = new Set<number>();
     private keyHeld = false;
+    private inputEnabled = true;
     private visualDepth = 0;
     private lastDrawnDepth = -1;
     private lastDrawnPressed = false;
@@ -109,6 +110,14 @@ export class JetButton extends Component {
         return this.bladder?.pressed ?? (this.activeTouchIds.size > 0 || this.keyHeld);
     }
 
+    /** 暂停或结算期间禁用输入并立刻释放已按住的触点/按键 */
+    setInputEnabled(enabled: boolean): void {
+        this.inputEnabled = enabled;
+        if (!enabled) {
+            this.releaseAllInputs();
+        }
+    }
+
     onEnable(): void {
         this.node.on(Node.EventType.TOUCH_START, this.onTouchStart, this);
         this.node.on(Node.EventType.TOUCH_END, this.onTouchEnd, this);
@@ -154,6 +163,9 @@ export class JetButton extends Component {
     }
 
     private onTouchStart = (event: EventTouch): void => {
+        if (!this.inputEnabled) {
+            return;
+        }
         event.propagationStopped = true;
         this.activeTouchIds.add(event.getID());
         this.syncBladderInput();
@@ -166,7 +178,7 @@ export class JetButton extends Component {
     };
 
     private onKeyDown = (event: EventKeyboard): void => {
-        if (event.keyCode !== this.boundKey || this.keyHeld) {
+        if (!this.inputEnabled || event.keyCode !== this.boundKey || this.keyHeld) {
             return;
         }
         this.keyHeld = true;

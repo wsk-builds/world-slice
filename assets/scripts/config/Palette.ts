@@ -80,6 +80,22 @@ export const Palette = {
         highlight: hex('#FFFFFF', 0.42),
     },
 
+    /** 灰盒 HUD 配色 */
+    hud: {
+        countdownNormal: hex('#EEF2F6'),
+        countdownUrgent: hex('#FF6B6B'),
+        pauseBtnActive: hex('#364D63'),
+        overlayBackdrop: hex('#0B1219', 0.62),
+        cardBg: hex('#1C2836', 0.96),
+        cardBorder: hex('#64DFDF'),
+        cardWonBorder: hex('#48C9B0'),
+        cardLostBorder: hex('#FF6B6B'),
+        actionBtnFill: hex('#2B6B73'),
+        actionBtnBorder: hex('#8EE6CE'),
+        actionBtnLostFill: hex('#7A3844'),
+        actionBtnLostBorder: hex('#FF9AA2'),
+    },
+
     /** 调试调参面板配色 */
     tuning: {
         panelBg: hex('#131C26', 0.80),
