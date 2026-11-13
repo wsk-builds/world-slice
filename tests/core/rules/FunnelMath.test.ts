@@ -34,6 +34,14 @@ describe('FunnelMath 入柱宽容漏斗（T013）', () => {
     };
 
     const defaultFunnel = solveFeel(DEFAULT_FEEL_CONFIG).funnel;
+    const midFunnel = solveFeel({ ...DEFAULT_FEEL_CONFIG, funnelTolerance: 0.5 }).funnel;
+
+    it('默认 10% 入柱宽容度为 0.5 档的 20% 柔和吸纳范围与 7° 倾角上限', () => {
+        expect(DEFAULT_FEEL_CONFIG.funnelTolerance).toBe(0.1);
+        expect(defaultFunnel.maxAngleDeg).toBeCloseTo(7, 6);
+        expect(defaultFunnel.radiusPx).toBeCloseTo(midFunnel.radiusPx * 0.2, 6);
+        expect(defaultFunnel.pullAccel).toBeCloseTo(midFunnel.pullAccel * 0.2, 6);
+    });
 
     it('仅在柱未满、圈正在下落（vy < 0）、处于柱尖碗口区且倾角小于上限时施加居中力与回正力矩', () => {
         const qTilt = quatFromEulerDeg(15, 0, -20, { x: 0, y: 0, z: 0, w: 1 });
@@ -51,13 +59,13 @@ describe('FunnelMath 入柱宽容漏斗（T013）', () => {
 
         // 1. 静止（vy = 0）或上升（vy > 0）不吸圈
         body.vy = 0;
-        expect(computeFunnelForce3D(body, pillarTarget, defaultFunnel).active).toBe(false);
+        expect(computeFunnelForce3D(body, pillarTarget, midFunnel).active).toBe(false);
         body.vy = 60;
-        expect(computeFunnelForce3D(body, pillarTarget, defaultFunnel).active).toBe(false);
+        expect(computeFunnelForce3D(body, pillarTarget, midFunnel).active).toBe(false);
 
         // 2. 下落（vy < 0）时激活，fx/fz 朝向柱心，且倾角产生非零回正力矩
         body.vy = -80;
-        const res = computeFunnelForce3D(body, pillarTarget, defaultFunnel);
+        const res = computeFunnelForce3D(body, pillarTarget, midFunnel);
         expect(res.active).toBe(true);
         expect(res.fx).toBeLessThan(0);
         expect(res.fy).toBe(0);
@@ -67,21 +75,21 @@ describe('FunnelMath 入柱宽容漏斗（T013）', () => {
 
         // 3. 已满柱子不吸圈
         expect(
-            computeFunnelForce3D(body, { ...pillarTarget, isFull: true }, defaultFunnel).active,
+            computeFunnelForce3D(body, { ...pillarTarget, isFull: true }, midFunnel).active,
         ).toBe(false);
 
         // 4. 宽容度为 0 时不吸圈
         const zeroFunnel = solveFeel({ ...DEFAULT_FEEL_CONFIG, funnelTolerance: 0 }).funnel;
         expect(computeFunnelForce3D(body, pillarTarget, zeroFunnel).active).toBe(false);
 
-        // 5. 倾角超过上限（默认 35°）时不吸圈
+        // 5. 倾角超过上限（0.5 档为 35°）时不吸圈
         const qSteep = quatFromEulerDeg(45, 0, 0, { x: 0, y: 0, z: 0, w: 1 });
         body.setPose(pillarX + 18, collider.tipY + 18, 0, qSteep.x, qSteep.y, qSteep.z, qSteep.w);
-        expect(computeFunnelForce3D(body, pillarTarget, defaultFunnel).active).toBe(false);
+        expect(computeFunnelForce3D(body, pillarTarget, midFunnel).active).toBe(false);
 
         // 6. 水平距离超出碗口半径不吸圈
         body.setPose(
-            pillarX + defaultFunnel.radiusPx + 8,
+            pillarX + midFunnel.radiusPx + 8,
             collider.tipY + 18,
             0,
             qTilt.x,
@@ -89,11 +97,11 @@ describe('FunnelMath 入柱宽容漏斗（T013）', () => {
             qTilt.z,
             qTilt.w,
         );
-        expect(computeFunnelForce3D(body, pillarTarget, defaultFunnel).active).toBe(false);
+        expect(computeFunnelForce3D(body, pillarTarget, midFunnel).active).toBe(false);
 
         // 7. 已跌破柱尖且未套入内孔（擦柱外侧）时不侧向拉扯撞杆
         body.setPose(pillarX + innerR + 6, collider.tipY - tubeR - 8, 0, qTilt.x, qTilt.y, qTilt.z, qTilt.w);
-        expect(computeFunnelForce3D(body, pillarTarget, defaultFunnel).active).toBe(false);
+        expect(computeFunnelForce3D(body, pillarTarget, midFunnel).active).toBe(false);
     });
 
     it('三维回正力矩能正确把倾斜孔轴拉向竖直，并支持 180° 倒扣状态就近回正', () => {
@@ -111,14 +119,14 @@ describe('FunnelMath 入柱宽容漏斗（T013）', () => {
             tubeRadius: tubeR,
         });
         body.vy = -60;
-        const resA = computeFunnelForce3D(body, pillarTarget, defaultFunnel);
+        const resA = computeFunnelForce3D(body, pillarTarget, midFunnel);
         expect(resA.active).toBe(true);
         // 施加力矩一步后倾角应减小
         const world = new TorusWorld3D();
         world.addBody(body);
         for (let i = 0; i < 15; i++) {
             body.vy = -60;
-            applyFunnelToBody(body, [pillarTarget], [defaultFunnel]);
+            applyFunnelToBody(body, [pillarTarget], [midFunnel]);
             world.step(1 / 60);
         }
         const tiltAfterA = calcRingTiltDeg3D(body.basisN.x, body.basisN.y, body.basisN.z);
@@ -142,7 +150,7 @@ describe('FunnelMath 入柱宽容漏斗（T013）', () => {
         worldB.addBody(flipped);
         for (let i = 0; i < 15; i++) {
             flipped.vy = -60;
-            applyFunnelToBody(flipped, [pillarTarget], [defaultFunnel]);
+            applyFunnelToBody(flipped, [pillarTarget], [midFunnel]);
             worldB.step(1 / 60);
         }
         expect(flipped.basisN.y).toBeLessThan(0);
@@ -150,19 +158,19 @@ describe('FunnelMath 入柱宽容漏斗（T013）', () => {
     });
 
     it('resolveEffectiveFunnelParams 支持 T018 潮引 boost 放大半径、倾角上限与拉力', () => {
-        const boosted = resolveEffectiveFunnelParams(defaultFunnel, {
+        const boosted = resolveEffectiveFunnelParams(midFunnel, {
             radiusScale: 2.2,
             maxTiltDeg: 70,
             pullScale: 1.8,
         });
-        expect(boosted.radiusPx).toBeCloseTo(defaultFunnel.radiusPx * 2.2, 6);
+        expect(boosted.radiusPx).toBeCloseTo(midFunnel.radiusPx * 2.2, 6);
         expect(boosted.maxAngleDeg).toBe(70);
-        expect(boosted.pullAccel).toBeCloseTo(defaultFunnel.pullAccel * 1.8, 6);
-        expect(boosted.alignRate).toBeCloseTo(defaultFunnel.alignRate * 1.8, 6);
+        expect(boosted.pullAccel).toBeCloseTo(midFunnel.pullAccel * 1.8, 6);
+        expect(boosted.alignRate).toBeCloseTo(midFunnel.alignRate * 1.8, 6);
 
         // 若基础倾角已高于传入值，不收缩基础倾角
         const keepBaseTilt = resolveEffectiveFunnelParams(
-            { ...defaultFunnel, maxAngleDeg: 55 },
+            { ...midFunnel, maxAngleDeg: 55 },
             { radiusScale: 1.5, maxTiltDeg: 40, pullScale: 1.5 },
         );
         expect(keepBaseTilt.maxAngleDeg).toBe(55);
@@ -188,7 +196,7 @@ describe('FunnelMath 入柱宽容漏斗（T013）', () => {
         });
         body.vy = -70;
 
-        const applied = applyFunnelToBody(body, [leftTarget, rightTarget], [defaultFunnel, defaultFunnel]);
+        const applied = applyFunnelToBody(body, [leftTarget, rightTarget], [midFunnel, midFunnel]);
         expect(applied).toBe(true);
         expect(body.fx).toBeLessThan(0);
         expect(body.fz).toBeLessThan(0);

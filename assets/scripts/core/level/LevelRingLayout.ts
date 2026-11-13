@@ -14,6 +14,27 @@ export interface LevelRingLayoutOptions {
     pillarBottomPct?: number;
     cornerRadius?: number;
     minGapPx?: number;
+    /** 开局随机圈落向两根柱子之一的触发概率（默认 0.05，即约 5%） */
+    startPillarDropChance?: number;
+    /** 外部传入的开局落柱概率采样 [0, 1)；未传时由 seed 派生确定性采样 */
+    startPillarDropRoll?: number;
+    /** 外部传入的左右柱选择采样 [0, 1)；未传时由 seed 派生确定性采样 */
+    startPillarSideRoll?: number;
+    /** 外部传入的候选随机圈选择采样 [0, 1)；未传时由 seed 派生确定性采样 */
+    startPillarRingRoll?: number;
+}
+
+export interface StartPillarDropSelection {
+    ringIndex: number;
+    side: 'left' | 'right';
+}
+
+export interface PickStartPillarDropOptions {
+    candidateIndices: readonly number[];
+    chance?: number;
+    dropRoll: number;
+    sideRoll: number;
+    ringRoll: number;
 }
 
 export interface ResolvedLevelRingSpawn {
@@ -31,6 +52,7 @@ export interface ResolvedLevelRingSpawn {
 }
 
 const WALL_MARGIN_PAD_PX = 6;
+const PILLAR_DROP_CORRIDOR_PAD_PX = 18;
 const RANDOM_ATTEMPTS_PER_RING = 120;
 const GRID_SCAN_STEP_PX = 18;
 
@@ -116,6 +138,46 @@ export function overlapsPillar2D(
         pillar.baseTopY,
     );
     return crossDist < outerR + gap;
+}
+
+/**
+ * 判断随机出生点是否处于柱子上方（含柱身段）的垂直落柱通道内：
+ * 避免普通随机圈开局不经玩家操作就顺重力直接套上柱子。
+ */
+export function isInPillarDropCorridor(
+    x: number,
+    y: number,
+    outerR: number,
+    pillar: PillarCollider3D,
+    gap: number = GameConst.levelRingSpawnGapPx,
+): boolean {
+    if (y < pillar.crossBottomY - outerR - gap) {
+        return false;
+    }
+    return Math.abs(x - pillar.x) < outerR + PILLAR_DROP_CORRIDOR_PAD_PX;
+}
+
+/**
+ * 开局随机圈落柱概率函数（默认约 5%，即 100 局约 5 局会有一个随机圈落入左右柱之一）：
+ * - `dropRoll < chance` 且存在未受困随机圈时，等概率选中 `'left'` 或 `'right'` 柱及一枚随机圈；
+ * - 其余约 95% 情况返回 `null`。
+ */
+export function pickStartPillarDrop(options: PickStartPillarDropOptions): StartPillarDropSelection | null {
+    const chance = options.chance ?? GameConst.startPillarDropChance;
+    const candidates = options.candidateIndices;
+    if (!Number.isFinite(chance) || chance <= 0 || candidates.length === 0) {
+        return null;
+    }
+    if (!(options.dropRoll >= 0 && options.dropRoll < chance)) {
+        return null;
+    }
+    const side: 'left' | 'right' = options.sideRoll < 0.5 ? 'left' : 'right';
+    const clampedRingRoll = Math.min(
+        0.999999999,
+        Math.max(0, Number.isFinite(options.ringRoll) ? options.ringRoll : 0),
+    );
+    const pickIdx = candidates[Math.floor(clampedRingRoll * candidates.length)];
+    return { ringIndex: pickIdx, side };
 }
 
 /** 将显式坐标夹紧到水缸内部（含左右圆弧底角），保证不落入墙外 */
@@ -204,9 +266,13 @@ export function resolveLevelRingLayout(
     };
 
     // 第一遍：先固定显式百分比位置的圈，确保后续随机圈能避开它们
+    const randomCandidates: number[] = [];
     for (let i = 0; i < rings.length; i++) {
         const entry = rings[i];
         if (entry.pos === 'random') {
+            if (!entry.trappedBy) {
+                randomCandidates.push(i);
+            }
             continue;
         }
         const spec: RingSpec = { kind: entry.kind, color: entry.color };
@@ -230,11 +296,61 @@ export function resolveLevelRingLayout(
         results[i] = spawn;
     }
 
+    const defaultDropRoll = rng.next();
+    const defaultSideRoll = rng.next();
+    const defaultRingRoll = rng.next();
+    const startDrop = pickStartPillarDrop({
+        candidateIndices: randomCandidates,
+        chance: options.startPillarDropChance,
+        dropRoll: options.startPillarDropRoll ?? defaultDropRoll,
+        sideRoll: options.startPillarSideRoll ?? defaultSideRoll,
+        ringRoll: options.startPillarRingRoll ?? defaultRingRoll,
+    });
+
+    if (startDrop) {
+        const entry = rings[startDrop.ringIndex];
+        const spec: RingSpec = { kind: entry.kind, color: entry.color };
+        const { outerRadius, tubeRadius } = computeDims(spec);
+        const targetPillar = startDrop.side === 'left' ? leftPillar : rightPillar;
+        const dropX = clamp(
+            targetPillar.x + rng.range(-3.5, 3.5),
+            outerRadius + WALL_MARGIN_PAD_PX,
+            tankWidth - outerRadius - WALL_MARGIN_PAD_PX,
+        );
+        const dropY = clamp(
+            targetPillar.tipY + outerRadius + 16,
+            targetPillar.tipY + outerRadius + minGapPx,
+            tankHeight - outerRadius - WALL_MARGIN_PAD_PX,
+        );
+        const dropZ = rng.range(-2.5, 2.5);
+        const spawn: ResolvedLevelRingSpawn = {
+            index: startDrop.ringIndex,
+            spec,
+            x: dropX,
+            y: dropY,
+            z: dropZ,
+            pitchXDeg: rng.range(-7, 7),
+            yawYDeg: rng.range(0, 360),
+            rollZDeg: entry.angleDeg !== undefined ? entry.angleDeg : rng.range(-7, 7),
+            outerRadius,
+            tubeRadius,
+            fromRandom: true,
+        };
+        placed.push(spawn);
+        results[startDrop.ringIndex] = spawn;
+    }
+
     const isFreeSpot = (x: number, y: number, outerR: number): boolean => {
         if (!isCircleInsideTank(x, y, outerR, tankWidth, tankHeight, cornerRadius)) {
             return false;
         }
         if (overlapsPillar2D(x, y, outerR, leftPillar, minGapPx) || overlapsPillar2D(x, y, outerR, rightPillar, minGapPx)) {
+            return false;
+        }
+        if (
+            isInPillarDropCorridor(x, y, outerR, leftPillar, minGapPx) ||
+            isInPillarDropCorridor(x, y, outerR, rightPillar, minGapPx)
+        ) {
             return false;
         }
         for (let j = 0; j < placed.length; j++) {
@@ -256,10 +372,10 @@ export function resolveLevelRingLayout(
         return minScore;
     };
 
-    // 第二遍：为所有 'random' 圈生成无重叠坐标与确定性 3D 姿态
+    // 第二遍：为剩余所有 'random' 圈生成无重叠且避开柱顶落柱通道的坐标与确定性 3D 姿态
     for (let i = 0; i < rings.length; i++) {
         const entry = rings[i];
-        if (entry.pos !== 'random') {
+        if (entry.pos !== 'random' || results[i]) {
             continue;
         }
         const spec: RingSpec = { kind: entry.kind, color: entry.color };
@@ -300,7 +416,9 @@ export function resolveLevelRingLayout(
                     if (
                         isCircleInsideTank(gx, gy, outerRadius, tankWidth, tankHeight, cornerRadius) &&
                         !overlapsPillar2D(gx, gy, outerRadius, leftPillar, minGapPx) &&
-                        !overlapsPillar2D(gx, gy, outerRadius, rightPillar, minGapPx)
+                        !overlapsPillar2D(gx, gy, outerRadius, rightPillar, minGapPx) &&
+                        !isInPillarDropCorridor(gx, gy, outerRadius, leftPillar, minGapPx) &&
+                        !isInPillarDropCorridor(gx, gy, outerRadius, rightPillar, minGapPx)
                     ) {
                         const score = minClearanceScore(gx, gy, outerRadius);
                         if (score > bestClearance) {

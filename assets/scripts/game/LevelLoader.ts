@@ -128,6 +128,10 @@ export class LevelLoader extends Component {
                     seed: level.seed,
                     pillarPosPct: FeelConfig.pillarPosPct,
                     pillarBottomPct: FeelConfig.pillarBottomPct,
+                    startPillarDropChance: GameConst.startPillarDropChance,
+                    startPillarDropRoll: Math.random(),
+                    startPillarSideRoll: Math.random(),
+                    startPillarRingRoll: Math.random(),
                 });
                 for (let i = 0; i < spawns.length; i++) {
                     const item = spawns[i];

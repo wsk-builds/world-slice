@@ -9,13 +9,14 @@ import {
 } from '../core/rules/Energy';
 import { PhysicsStepper } from './PhysicsStepper';
 import { Pillar } from './Pillar';
-import { RingLockedEvent, ScoreJudge } from './ScoreJudge';
+import { MatchClearedEvent, RingLockedEvent, ScoreJudge } from './ScoreJudge';
 
 const { ccclass } = _decorator;
 
 /**
  * 柱子充能与技能触发桥接组件（T017）：
- * - 监听 ScoreJudge.onRingLocked，将单套 (+10%) 与同款消除 (+40%，共 +50%) 喂给纯逻辑 PillarEnergy；
+ * - 监听 ScoreJudge.onRingLocked，将单套 (+10%) 与相邻同款消除（2/3/4 圈分别额外 +20%/+30%/+40%）喂给纯逻辑 PillarEnergy；
+ * - 监听 ScoreJudge.onMatchCleared 的下落连锁消除（isChain），补充纯消除能量；
  * - 随 PhysicsStepper.onAfterStep 推进技能持续倒计时（暂停时冻结，结束后自动恢复充能并保留溢出）；
  * - 实时同步左右柱 3D 十字刻度与柱尖灵珠，并在满 100% 时触发闪光、打印提示与对外发出技能触发事件（供 T018/T019 订阅）。
  */
@@ -29,6 +30,7 @@ export class PillarEnergyController extends Component {
 
     private stepper: PhysicsStepper | null = null;
     private unsubLock: (() => void) | null = null;
+    private unsubMatch: (() => void) | null = null;
     private unsubChange: (() => void) | null = null;
     private unsubTrigger: (() => void) | null = null;
     private readonly skillListeners: SkillTriggerListener[] = [];
@@ -65,6 +67,9 @@ export class PillarEnergyController extends Component {
         if (!this.unsubLock && this.scoreJudge) {
             this.unsubLock = this.scoreJudge.onRingLocked(this.onRingLocked);
         }
+        if (!this.unsubMatch && this.scoreJudge) {
+            this.unsubMatch = this.scoreJudge.onMatchCleared(this.onMatchCleared);
+        }
         if (!this.unsubChange) {
             this.unsubChange = this.core.onChange(this.onEnergyChanged);
         }
@@ -77,6 +82,8 @@ export class PillarEnergyController extends Component {
         this.stepper?.offAfterStep(this.onAfterStep);
         this.unsubLock?.();
         this.unsubLock = null;
+        this.unsubMatch?.();
+        this.unsubMatch = null;
         this.unsubChange?.();
         this.unsubChange = null;
         this.unsubTrigger?.();
@@ -118,7 +125,14 @@ export class PillarEnergyController extends Component {
     }
 
     private onRingLocked = (event: RingLockedEvent): void => {
-        this.core.recordLock(event.side, event.matched);
+        this.core.recordLock(event.side, event.matchedCount);
+    };
+
+    private onMatchCleared = (event: MatchClearedEvent): void => {
+        if (!event.isChain) {
+            return;
+        }
+        this.core.recordMatchBonus(event.side, event.matchCount);
     };
 
     private onAfterStep = (dt: number): void => {

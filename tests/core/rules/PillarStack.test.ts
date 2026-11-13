@@ -61,6 +61,14 @@ describe('PillarStack', () => {
         stack.clear();
         expect(stack.count).toBe(0);
         expect(stack.isEmpty()).toBe(true);
+
+        // insertAt 按指定位置插入并夹紧边界
+        expect(stack.insertAt(0, 'top')).toBe(0);
+        expect(stack.insertAt(0, 'bottom')).toBe(0);
+        expect(stack.insertAt(1, 'mid')).toBe(1);
+        expect(stack.insertAt(99, 'highest')).toBe(3);
+        expect(stack.items).toEqual(['bottom', 'mid', 'top', 'highest']);
+        expect(stack.insertAt(0, 'extra')).toBe(-1);
     });
 
     it('calcSlotCenterY 按微倾层高系数精确对齐 6 个普通圈到柱尖并支持混叠小金环', () => {

@@ -25,7 +25,7 @@ export interface FeelParams {
     circulationDecaySec: number;
     /** 11. 翻滚灵敏度（0–1 旋钮，起始值 0.5） */
     tumbleSensitivity: number;
-    /** 12. 入柱宽容（0–1 旋钮，起始值 0.5） */
+    /** 12. 入柱宽容（0–1 旋钮，起始值 0.1 即 10%） */
     funnelTolerance: number;
 }
 
@@ -41,7 +41,7 @@ export const DEFAULT_FEEL_CONFIG: Readonly<FeelParams> = {
     nozzleTiltDeg: 10,
     circulationDecaySec: 1.75,
     tumbleSensitivity: 0.5,
-    funnelTolerance: 0.5,
+    funnelTolerance: 0.1,
 };
 
 /** 不作为调参滑块暴露的底层物理基数，供 FeelSolver 与 FlowField 换算使用 */

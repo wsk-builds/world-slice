@@ -108,6 +108,16 @@ export class PillarStack<T = unknown> {
         return this.slots.length - 1;
     }
 
+    /** 按指定槽位下标插入（用于保持物理从底到顶的真实排序），成功返回实际插入下标 */
+    insertAt(slotIndex: number, item: T): number {
+        if (this.isFull() || this.has(item)) {
+            return -1;
+        }
+        const idx = Math.max(0, Math.min(this.slots.length, Math.floor(slotIndex)));
+        this.slots.splice(idx, 0, item);
+        return idx;
+    }
+
     /** 取出顶部槽位 */
     pop(): T | undefined {
         return this.slots.pop();

@@ -111,6 +111,9 @@ export const GameConst = {
     /** 同款消除时被消双圈闪烁持续时间（秒） */
     matchFlashDurationSec: 0.22,
 
+    /** 柱上仍有紧邻同色圈正在稳定时，暂缓触发消除的最长等待时间（秒，防卡死） */
+    matchDeferMaxSec: 1.2,
+
     /** 同款消除后上方已锁圈启动平滑下落的延迟时间（秒，待双圈闪亮缩隐后再落） */
     matchDropDelaySec: 0.1,
 
@@ -147,11 +150,23 @@ export const GameConst = {
     /** 关卡随机摆位时圈与圈、圈与柱之间的最小间隙（像素） */
     levelRingSpawnGapPx: 6,
 
+    /** 开局随机圈落到两根柱子之一的触发概率（约 5%，100 局约 5 局） */
+    startPillarDropChance: 0.05,
+
     /** 套中锁定一次增加的柱子能量（%，GDD §2.1） */
     energyLockGainPct: 10,
 
-    /** 本次锁定触发同款消除时额外增加的能量（%，凑成一对共 60%，GDD §2.1） */
-    energyMatchBonusPct: 40,
+    /** 消除 2 个同款圈额外增加的能量（%） */
+    energyMatchBonus2Pct: 20,
+
+    /** 消除 3 个同款圈额外增加的能量（%） */
+    energyMatchBonus3Pct: 30,
+
+    /** 消除 4 个同款圈额外增加的能量（%） */
+    energyMatchBonus4Pct: 40,
+
+    /** 默认消除额外加能量（2 个圈消除为 20%，保留字段供兼容参考） */
+    energyMatchBonusPct: 20,
 
     /** 柱子满能量触发技能的阈值（%） */
     energyMaxPct: 100,

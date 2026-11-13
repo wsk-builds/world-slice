@@ -5,7 +5,12 @@ export type EnergySide = 'left' | 'right';
 
 export interface PillarEnergyConfig {
     lockGain?: number;
+    /** 2 圈消除额外加能量（默认 20%） */
     matchBonus?: number;
+    /** 3 圈消除额外加能量（默认 30%） */
+    matchBonus3?: number;
+    /** 4 圈消除额外加能量（默认 40%） */
+    matchBonus4?: number;
     maxEnergy?: number;
     skillDurationSec?: number;
     enabled?: LevelPillarEnergySwitch;
@@ -69,8 +74,36 @@ export function calcLitEnergyTicks(
 }
 
 /**
+ * 按本次消除的圈数计算额外充能百分比：
+ * - 消除 2 个：+20%
+ * - 消除 3 个：+30%
+ * - 消除 4 个：+40%（超过 4 个按每多 1 个 +10% 递增）
+ */
+export function calcMatchEnergyBonusPct(
+    matchCount: number,
+    bonus2: number = GameConst.energyMatchBonus2Pct,
+    bonus3: number = GameConst.energyMatchBonus3Pct,
+    bonus4: number = GameConst.energyMatchBonus4Pct,
+): number {
+    if (!Number.isFinite(matchCount) || matchCount < 2) {
+        return 0;
+    }
+    const count = Math.floor(matchCount);
+    if (count === 2) {
+        return bonus2;
+    }
+    if (count === 3) {
+        return bonus3;
+    }
+    if (count === 4) {
+        return bonus4;
+    }
+    return Math.min(100, bonus4 + (count - 4) * 10);
+}
+
+/**
  * 柱子充能与技能触发纯逻辑模型（GDD §2.1，T017，纯逻辑不依赖引擎）：
- * - 套中锁定 +10%；本次同时触发消除再 +40%（凑成一对共 60%）；
+ * - 套中锁定 +10%；本次同时触发消除按消除数量额外加能量（2 圈 +20%、3 圈 +30%、4 圈 +40%）；
  * - 满 100% 发出技能触发事件并保留溢出能量；
  * - 技能持续期间（默认 5 秒）本柱暂停充能，结束后恢复充能并保留溢出；
  * - 支持按关卡数据单独开关左/右柱充能（如第 1–2 关双关、第 3 关仅左柱开启）。
@@ -78,6 +111,8 @@ export function calcLitEnergyTicks(
 export class PillarEnergy {
     readonly lockGain: number;
     readonly matchBonus: number;
+    readonly matchBonus3: number;
+    readonly matchBonus4: number;
     readonly maxEnergy: number;
     private skillDurationSec: number;
 
@@ -87,7 +122,9 @@ export class PillarEnergy {
 
     constructor(config?: PillarEnergyConfig) {
         this.lockGain = config?.lockGain ?? GameConst.energyLockGainPct;
-        this.matchBonus = config?.matchBonus ?? GameConst.energyMatchBonusPct;
+        this.matchBonus = config?.matchBonus ?? GameConst.energyMatchBonus2Pct;
+        this.matchBonus3 = config?.matchBonus3 ?? GameConst.energyMatchBonus3Pct;
+        this.matchBonus4 = config?.matchBonus4 ?? GameConst.energyMatchBonus4Pct;
         this.maxEnergy = config?.maxEnergy ?? GameConst.energyMaxPct;
         this.skillDurationSec = Math.max(0, config?.skillDurationSec ?? GameConst.pillarSkillDurationSec);
 
@@ -180,10 +217,22 @@ export class PillarEnergy {
         }
     }
 
-    /** 记录一次套中锁定（matched 为 true 时额外叠加同款消除奖励） */
-    recordLock(side: EnergySide, matched: boolean): EnergyGainResult {
-        const amount = this.lockGain + (matched ? this.matchBonus : 0);
+    /**
+     * 记录一次套中锁定：
+     * - `matched` 可传 boolean（true 按 2 圈消除计）或本次消除圈数（0/2/3/4）；
+     * - 套中固定 +10%，若触发消除按 2/3/4 圈额外加 20%/30%/40%。
+     */
+    recordLock(side: EnergySide, matched: boolean | number): EnergyGainResult {
+        const matchCount = typeof matched === 'number' ? matched : matched ? 2 : 0;
+        const bonus = calcMatchEnergyBonusPct(matchCount, this.matchBonus, this.matchBonus3, this.matchBonus4);
+        const amount = this.lockGain + bonus;
         return this.addEnergy(side, amount);
+    }
+
+    /** 仅记录一次纯消除额外能量（用于下落连锁消除，不重复加套中 +10%） */
+    recordMatchBonus(side: EnergySide, matchCount: number): EnergyGainResult {
+        const bonus = calcMatchEnergyBonusPct(matchCount, this.matchBonus, this.matchBonus3, this.matchBonus4);
+        return this.addEnergy(side, bonus);
     }
 
     /** 增加指定能量值；若本柱关闭或正在释放技能则忽略 */

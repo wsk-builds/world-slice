@@ -5,8 +5,10 @@ import {
     calcMatchDropDuration,
     calcMatchDropY,
     MatchSlotInput,
+    PillarRingCandidate,
     RemainingSlotLayout,
     resolvePillarMatch,
+    shouldDeferPillarMatch,
 } from '../core/rules/MatchRule';
 import {
     calcRingTiltDeg3D,
@@ -30,15 +32,20 @@ export interface RingLockedEvent {
     stack: PillarStack<Ring>;
     /** 本次锁定是否触发了同款消除（供 T017 充能等模块识别） */
     matched: boolean;
+    /** 本次锁定触发消除的圈数（未触发为 0，触发则为 2 / 3 / 4） */
+    matchedCount: number;
 }
 
 export interface MatchClearedEvent {
     pillar: Pillar;
     side: PillarSide;
-    triggerRing: Ring;
-    clearedPair: [Ring, Ring];
+    triggerRing: Ring | null;
+    clearedRings: readonly Ring[];
+    matchCount: number;
     remainingRings: readonly Ring[];
     spec: RingSpec;
+    /** 是否为上方圈平滑下落后产生的连锁消除 */
+    isChain: boolean;
 }
 
 export type RingLockedListener = (event: RingLockedEvent) => void;
@@ -93,6 +100,7 @@ export class ScoreJudge extends Component {
     private readonly lockedOffsets = new Map<Ring, LockedLocalOffset>();
     private readonly flashingRings = new Map<Ring, FlashingRingState>();
     private readonly droppingRings = new Map<Ring, DroppingRingState>();
+    private readonly matchDeferElapsed: Record<PillarSide, number> = { left: 0, right: 0 };
     private readonly activeSetScratch = new Set<Ring>();
     private readonly lockListeners: RingLockedListener[] = [];
     private readonly matchListeners: MatchClearedListener[] = [];
@@ -175,6 +183,8 @@ export class ScoreJudge extends Component {
         this.lockedOffsets.clear();
         this.flashingRings.clear();
         this.droppingRings.clear();
+        this.matchDeferElapsed.left = 0;
+        this.matchDeferElapsed.right = 0;
     }
 
     /** 同步所有已锁定圈的位置到当前柱子布局与槽位高度（保留各自的 3D 自然微倾与轻微偏心） */
@@ -219,12 +229,15 @@ export class ScoreJudge extends Component {
 
         this.pruneRemovedRings(this.ringLayer.getRings());
         this.stepFlashingRings(dt);
-        this.stepDroppingRings(dt);
+        const finishedDropPillars = this.stepDroppingRings(dt);
 
         const rings = this.ringLayer.getRings();
-        if (rings.length === 0) {
-            return;
-        }
+        const onPillarBySide: Record<PillarSide, Ring[]> = { left: [], right: [] };
+        const tipIncomingBySide: Record<PillarSide, Ring[]> = { left: [], right: [] };
+        const pendingByPillar: Record<PillarSide, Array<{ ring: Ring; pillar: Pillar; slotCenterY: number }>> = {
+            left: [],
+            right: [],
+        };
 
         for (let i = 0; i < rings.length; i++) {
             const ring = rings[i];
@@ -234,83 +247,203 @@ export class ScoreJudge extends Component {
             }
 
             const matchedPillar = this.findMatchingPillar3D(ring);
-            if (!matchedPillar) {
-                this.holdProgress.delete(ring);
-                continue;
-            }
-
-            const stack = this.stacks[matchedPillar.side];
-            const thicknesses = stack.items.map((r) => r.dimensions.thickness);
-            const slotCenterY = calcSlotCenterY(
-                matchedPillar.baseTopY,
-                thicknesses,
-                ring.dimensions.thickness,
-                stack.count,
-                GameConst.pillarSlotPitchScale,
-            );
-
-            const b = ring.body3D;
-            const linearSpeedPx = Math.hypot(b.vx, b.vy, b.vz);
-            const angularSpeedRad = Math.hypot(b.wx, b.wy, b.wz);
-            const tiltDeg = calcRingTiltDeg3D(b.basisN.x, b.basisN.y, b.basisN.z);
-
-            if (
-                !isRingStableForLock({
-                    linearSpeedPx,
-                    angularSpeedRad,
-                    tiltDeg,
-                    centerY: b.y,
-                    slotCenterY,
-                })
-            ) {
-                this.holdProgress.delete(ring);
-                continue;
-            }
-
-            const prev = this.holdProgress.get(ring);
-            const elapsed = prev && prev.side === matchedPillar.side ? prev.elapsed + dt : dt;
-            if (elapsed < GameConst.ringLockDurationSec) {
-                this.holdProgress.set(ring, { side: matchedPillar.side, elapsed });
-                continue;
-            }
-
-            const slotIndex = stack.push(ring);
-            if (slotIndex < 0) {
-                this.holdProgress.delete(ring);
+            if (matchedPillar) {
+                onPillarBySide[matchedPillar.side].push(ring);
                 continue;
             }
 
             this.holdProgress.delete(ring);
-            this.lockRingOnPillar3D(ring, matchedPillar, slotCenterY);
+            const incomingPillar = this.findIncomingTipPillar3D(ring);
+            if (incomingPillar) {
+                tipIncomingBySide[incomingPillar.side].push(ring);
+            }
+        }
 
-            const matchCleared = this.tryResolvePillarMatch(ring, matchedPillar, stack);
+        for (const side of ['left', 'right'] as const) {
+            const pillar = side === 'left' ? this.leftPillar : this.rightPillar;
+            const onPillar = onPillarBySide[side];
+            if (!pillar || onPillar.length === 0) {
+                continue;
+            }
 
-            const lockEvent: RingLockedEvent = {
-                ring,
-                pillar: matchedPillar,
-                side: matchedPillar.side,
-                slotIndex,
-                stack,
-                matched: matchCleared !== null,
-            };
-            const lockListeners = this.lockListeners.slice();
-            for (let j = 0; j < lockListeners.length; j++) {
-                lockListeners[j](lockEvent);
+            onPillar.sort((a, b) => a.body3D.y - b.body3D.y);
+            const stack = this.stacks[side];
+            const baseThicknesses = stack.items.map((r) => r.dimensions.thickness);
+
+            for (let i = 0; i < onPillar.length; i++) {
+                const ring = onPillar[i];
+                const physicalSlotIndex = stack.count + i;
+                if (physicalSlotIndex >= GameConst.pillarCapacity) {
+                    this.holdProgress.delete(ring);
+                    continue;
+                }
+
+                const combinedThicknesses = baseThicknesses.slice();
+                for (let k = 0; k < i; k++) {
+                    combinedThicknesses.push(onPillar[k].dimensions.thickness);
+                }
+
+                const slotCenterY = calcSlotCenterY(
+                    pillar.baseTopY,
+                    combinedThicknesses,
+                    ring.dimensions.thickness,
+                    physicalSlotIndex,
+                    GameConst.pillarSlotPitchScale,
+                );
+
+                const b = ring.body3D;
+                const linearSpeedPx = Math.hypot(b.vx, b.vy, b.vz);
+                const angularSpeedRad = Math.hypot(b.wx, b.wy, b.wz);
+                const tiltDeg = calcRingTiltDeg3D(b.basisN.x, b.basisN.y, b.basisN.z);
+
+                if (
+                    !isRingStableForLock({
+                        linearSpeedPx,
+                        angularSpeedRad,
+                        tiltDeg,
+                        centerY: b.y,
+                        slotCenterY,
+                    })
+                ) {
+                    this.holdProgress.delete(ring);
+                    continue;
+                }
+
+                const prev = this.holdProgress.get(ring);
+                const elapsed = prev && prev.side === side ? prev.elapsed + dt : dt;
+                if (elapsed < GameConst.ringLockDurationSec) {
+                    this.holdProgress.set(ring, { side, elapsed });
+                    continue;
+                }
+
+                this.holdProgress.delete(ring);
+                pendingByPillar[side].push({ ring, pillar, slotCenterY });
+            }
+        }
+
+        for (const side of ['left', 'right'] as const) {
+            const pillar = side === 'left' ? this.leftPillar : this.rightPillar;
+            if (!pillar) {
+                continue;
+            }
+            const stack = this.stacks[side];
+            const pending = pendingByPillar[side];
+            const lockedBatch: Array<{ ring: Ring; slotIndex: number }> = [];
+
+            if (pending.length > 0) {
+                pending.sort((a, b) => a.ring.body3D.y - b.ring.body3D.y);
+
+                for (let i = 0; i < pending.length; i++) {
+                    const item = pending[i];
+                    let insertIdx = 0;
+                    while (insertIdx < stack.items.length && stack.items[insertIdx].body3D.y <= item.ring.body3D.y) {
+                        insertIdx++;
+                    }
+                    const slotIndex = stack.insertAt(insertIdx, item.ring);
+                    if (slotIndex < 0) {
+                        continue;
+                    }
+                    this.lockRingOnPillar3D(item.ring, pillar, item.slotCenterY);
+                    lockedBatch.push({ ring: item.ring, slotIndex });
+
+                    const onIdx = onPillarBySide[side].indexOf(item.ring);
+                    if (onIdx >= 0) {
+                        onPillarBySide[side].splice(onIdx, 1);
+                    }
+                }
+
+                if (lockedBatch.length > 0) {
+                    this.matchDeferElapsed[side] = 0;
+                }
+            }
+
+            const hasDrops = this.hasDroppingOnPillar(pillar);
+            const dropFinishedOnPillar = finishedDropPillars.includes(pillar);
+
+            if (lockedBatch.length === 0 && !dropFinishedOnPillar && stack.count < 2) {
+                this.matchDeferElapsed[side] = 0;
+                continue;
+            }
+
+            let matchCleared: MatchClearedEvent | null = null;
+            if (!hasDrops && stack.count >= 2) {
+                const topLocked = lockedBatch.length > 0 ? lockedBatch[lockedBatch.length - 1].ring : null;
+                matchCleared = this.tryResolvePillarMatch(
+                    topLocked,
+                    pillar,
+                    stack,
+                    onPillarBySide[side],
+                    tipIncomingBySide[side],
+                    dt,
+                    lockedBatch.length === 0,
+                );
+            } else if (lockedBatch.length > 0 && hasDrops) {
+                const topLocked = lockedBatch[lockedBatch.length - 1].ring;
+                const thicknesses = stack.items.map((r) => r.dimensions.thickness);
+                const targetY = calcSlotCenterY(
+                    pillar.baseTopY,
+                    thicknesses,
+                    topLocked.dimensions.thickness,
+                    stack.indexOf(topLocked),
+                    GameConst.pillarSlotPitchScale,
+                );
+                this.enqueueRingDrop(topLocked, pillar, targetY);
+            }
+
+            let creditRing: Ring | null = null;
+            if (matchCleared) {
+                for (let i = lockedBatch.length - 1; i >= 0; i--) {
+                    if (matchCleared.clearedRings.includes(lockedBatch[i].ring)) {
+                        creditRing = lockedBatch[i].ring;
+                        break;
+                    }
+                }
+                if (!creditRing) {
+                    matchCleared.isChain = true;
+                }
+            }
+
+            if (lockedBatch.length > 0) {
+                const lockListeners = this.lockListeners.slice();
+                for (let i = 0; i < lockedBatch.length; i++) {
+                    const locked = lockedBatch[i];
+                    const isCredit = matchCleared !== null && locked.ring === creditRing;
+                    const lockEvent: RingLockedEvent = {
+                        ring: locked.ring,
+                        pillar,
+                        side,
+                        slotIndex: locked.slotIndex,
+                        stack,
+                        matched: isCredit,
+                        matchedCount: isCredit && matchCleared ? matchCleared.matchCount : 0,
+                    };
+                    for (let j = 0; j < lockListeners.length; j++) {
+                        lockListeners[j](lockEvent);
+                    }
+                }
             }
 
             if (matchCleared) {
-                const matchListeners = this.matchListeners.slice();
-                for (let j = 0; j < matchListeners.length; j++) {
-                    matchListeners[j](matchCleared);
-                }
+                this.emitMatchCleared(matchCleared);
             }
         }
     };
 
+    private emitMatchCleared(event: MatchClearedEvent): void {
+        const matchListeners = this.matchListeners.slice();
+        for (let j = 0; j < matchListeners.length; j++) {
+            matchListeners[j](event);
+        }
+    }
+
     private tryResolvePillarMatch(
-        triggerRing: Ring,
+        triggerRing: Ring | null,
         pillar: Pillar,
         stack: PillarStack<Ring>,
+        remainingOnPillar: readonly Ring[],
+        tipIncoming: readonly Ring[],
+        dt: number,
+        isChain: boolean,
     ): MatchClearedEvent | null {
         const entries: MatchSlotInput<Ring>[] = stack.items.map((r) => ({
             item: r,
@@ -318,45 +451,95 @@ export class ScoreJudge extends Component {
             thickness: r.dimensions.thickness,
         }));
 
+        const preferredIndex = triggerRing ? stack.indexOf(triggerRing) : -1;
         const result = resolvePillarMatch(entries, {
             baseTopY: pillar.baseTopY,
             pitchScale: GameConst.pillarSlotPitchScale,
+            preferredIndex: preferredIndex >= 0 ? preferredIndex : undefined,
         });
 
-        if (!result.matched || !result.pair) {
-            // 若下方尚有圈在平滑下落，新落入的未配对顶圈也一并平滑落到目标高度
-            if (this.hasDroppingOnPillar(pillar)) {
-                const thicknesses = stack.items.map((r) => r.dimensions.thickness);
-                const targetY = calcSlotCenterY(
-                    pillar.baseTopY,
-                    thicknesses,
-                    triggerRing.dimensions.thickness,
-                    stack.count - 1,
-                    GameConst.pillarSlotPitchScale,
-                );
-                this.enqueueRingDrop(triggerRing, pillar, targetY);
-            }
+        if (!result.matched || !result.group) {
+            this.matchDeferElapsed[pillar.side] = 0;
             return null;
         }
 
-        const firstRing = result.pair.first.item;
-        const secondRing = result.pair.second.item;
+        const touchesTopOfStack = result.group.indices[result.group.indices.length - 1] === stack.count - 1;
+        const pendingCandidates: PillarRingCandidate[] = remainingOnPillar.map((r) => ({
+            spec: r.spec,
+            thickness: r.dimensions.thickness,
+            y: r.body3D.y,
+            lockedIndex: -1,
+        }));
+        if (touchesTopOfStack) {
+            for (let i = 0; i < tipIncoming.length; i++) {
+                const r = tipIncoming[i];
+                pendingCandidates.push({
+                    spec: r.spec,
+                    thickness: r.dimensions.thickness,
+                    y: r.body3D.y,
+                    lockedIndex: -1,
+                });
+            }
+        }
 
-        stack.remove(firstRing);
-        stack.remove(secondRing);
+        const lockedCandidates: PillarRingCandidate[] = stack.items.map((r, idx) => ({
+            spec: r.spec,
+            thickness: r.dimensions.thickness,
+            y: r.body3D.y,
+            lockedIndex: idx,
+        }));
 
-        this.beginClearingRing(firstRing);
-        this.beginClearingRing(secondRing);
+        if (
+            this.matchDeferElapsed[pillar.side] < GameConst.matchDeferMaxSec &&
+            shouldDeferPillarMatch(lockedCandidates, pendingCandidates, result.group.indices)
+        ) {
+            this.matchDeferElapsed[pillar.side] += dt;
+            return null;
+        }
+
+        this.matchDeferElapsed[pillar.side] = 0;
+
+        const clearedRings = result.group.entries.map((e) => e.item);
+        for (let i = 0; i < clearedRings.length; i++) {
+            stack.remove(clearedRings[i]);
+            this.beginClearingRing(clearedRings[i]);
+        }
+
         this.scheduleRemainingDrops(pillar, result.remaining);
 
+        const baseSpec = clearedRings[0]?.spec ?? triggerRing?.spec ?? { kind: 'normal', color: 'red' };
         return {
             pillar,
             side: pillar.side,
             triggerRing,
-            clearedPair: [firstRing, secondRing],
+            clearedRings,
+            matchCount: clearedRings.length,
             remainingRings: stack.items.slice(),
-            spec: { kind: triggerRing.spec.kind, color: triggerRing.spec.color },
+            spec: { kind: baseSpec.kind, color: baseSpec.color },
+            isChain,
         };
+    }
+
+    private findIncomingTipPillar3D(ring: Ring): Pillar | null {
+        const b = ring.body3D;
+        if (b.vy > 20) {
+            return null;
+        }
+        const candidates = [this.leftPillar, this.rightPillar];
+        for (let i = 0; i < candidates.length; i++) {
+            const pillar = candidates[i];
+            if (!pillar || this.stacks[pillar.side].isFull()) {
+                continue;
+            }
+            if (b.y < pillar.tipY - 4 || b.y > pillar.tipY + ring.dimensions.outerDiameter * 0.75) {
+                continue;
+            }
+            const radialDistXZ = Math.hypot(b.x - pillar.node.position.x, b.z);
+            if (radialDistXZ <= ring.dimensions.innerRadius + 10) {
+                return pillar;
+            }
+        }
+        return null;
     }
 
     private beginClearingRing(ring: Ring): void {
@@ -440,10 +623,11 @@ export class ScoreJudge extends Component {
         }
     }
 
-    private stepDroppingRings(dt: number): void {
+    private stepDroppingRings(dt: number): Pillar[] {
         if (this.droppingRings.size === 0) {
-            return;
+            return [];
         }
+        const finishedPillars: Pillar[] = [];
         for (const [ring, state] of Array.from(this.droppingRings.entries())) {
             if (!ring.isValid || ring.clearing || !ring.isBodyReady) {
                 this.droppingRings.delete(ring);
@@ -460,8 +644,12 @@ export class ScoreJudge extends Component {
 
             if (progress >= 1) {
                 this.droppingRings.delete(ring);
+                if (!finishedPillars.includes(state.pillar)) {
+                    finishedPillars.push(state.pillar);
+                }
             }
         }
+        return finishedPillars;
     }
 
     private applyRingHeightAtPillar(ring: Ring, pillar: Pillar, dyFromBase: number): void {
