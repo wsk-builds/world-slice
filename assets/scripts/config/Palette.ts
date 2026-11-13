@@ -46,4 +46,13 @@ export const Palette = {
     /** 灰盒标注文字颜色 */
     labelPrimary: hex('#EEF2F6'),
     labelMuted: hex('#B8C4D0'),
+
+    /** 水缸内底角垫块与内壁线 */
+    tankCornerFill: hex('#273645'),
+    tankWallBorder: hex('#52798F'),
+
+    /** 灰盒悬空柱与底托 */
+    pillarRodFill: hex('#DCE4EC'),
+    pillarBaseFill: hex('#9FB3C8'),
+    pillarBorder: hex('#F4F8FB'),
 } as const;

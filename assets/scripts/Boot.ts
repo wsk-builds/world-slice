@@ -1,6 +1,11 @@
-import { _decorator, Canvas, Component, Graphics, Label, Layers, Node, screen, UITransform, view } from 'cc';
+import { _decorator, Canvas, Component, Graphics, Layers, Node, PhysicsSystem2D, screen, UITransform, view } from 'cc';
 import { calcMachineScale, LayoutConfig } from './config/LayoutConfig';
 import { Palette } from './config/Palette';
+import { applyCollisionMatrix } from './config/PhysicsGroups';
+import { PhysicsDebugDraw } from './debug/PhysicsDebugDraw';
+import { PhysicsStepper } from './game/PhysicsStepper';
+import { Pillar } from './game/Pillar';
+import { Tank } from './game/Tank';
 import { ShellView } from './ui/ShellView';
 
 const { ccclass } = _decorator;
@@ -11,6 +16,8 @@ export class Boot extends Component {
     private machineNode: Node | null = null;
 
     onLoad(): void {
+        applyCollisionMatrix(PhysicsSystem2D.instance.collisionMatrix);
+
         const canvas = this.getComponent(Canvas);
         if (canvas?.cameraComponent) {
             canvas.cameraComponent.clearColor = Palette.shellBody;
@@ -25,7 +32,11 @@ export class Boot extends Component {
         this.machineNode = machine;
 
         // 内屏节点（原点在机身内屏左下角），位于外壳之下
-        this.createInnerScreenBase(machine);
+        const tankRoot = this.createTankRoot(machine);
+        tankRoot.addComponent(PhysicsStepper);
+        Tank.create(tankRoot);
+        Pillar.createPair(tankRoot);
+        tankRoot.addComponent(PhysicsDebugDraw);
 
         // 外壳绘制在最上层，内屏位置挖空
         ShellView.create(machine);
@@ -46,8 +57,8 @@ export class Boot extends Component {
         this.node.off(Node.EventType.SIZE_CHANGED, this.fitMachine, this);
     }
 
-    /** 创建内屏底色与占位标注，置于外壳下方。 */
-    private createInnerScreenBase(machine: Node): void {
+    /** 创建内屏水缸根节点，原点位于内屏左下角。 */
+    private createTankRoot(machine: Node): Node {
         const inner = LayoutConfig.innerScreen;
         const tankRoot = new Node('TankRoot');
         tankRoot.layer = Layers.Enum.UI_2D;
@@ -65,22 +76,8 @@ export class Boot extends Component {
         gfx.fillColor = Palette.innerWaterBg;
         gfx.fillRect(0, 0, inner.width, inner.height);
 
-        const labelNode = new Node('InnerScreenLabel');
-        labelNode.layer = Layers.Enum.UI_2D;
-        const labelTransform = labelNode.addComponent(UITransform);
-        labelTransform.setContentSize(inner.width - 40, 120);
-        labelNode.setPosition(inner.width / 2, inner.height / 2, 0);
-
-        const label = labelNode.addComponent(Label);
-        label.string = '内屏（水缸区）\n940 × 575';
-        label.fontSize = 32;
-        label.lineHeight = 44;
-        label.horizontalAlign = Label.HorizontalAlign.CENTER;
-        label.verticalAlign = Label.VerticalAlign.CENTER;
-        label.color = Palette.labelMuted;
-
-        tankRoot.addChild(labelNode);
         machine.addChild(tankRoot);
+        return tankRoot;
     }
 
     /** 按可视区域等比缩放整机并居中，窄屏不裁剪外壳。 */
