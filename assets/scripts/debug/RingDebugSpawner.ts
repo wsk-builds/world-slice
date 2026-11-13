@@ -2,6 +2,7 @@ import { _decorator, Component, EventKeyboard, EventTouch, Input, input, KeyCode
 import { GameConst } from '../config/GameConst';
 import { DEBUG_RING_SLOTS, ringSpecLabel, RingSpec } from '../core/rings/RingKinds';
 import { RingLayer } from '../game/RingLayer';
+import { ScoreJudge } from '../game/ScoreJudge';
 
 const { ccclass } = _decorator;
 
@@ -16,6 +17,7 @@ const tempVec3 = new Vec3();
 @ccclass('RingDebugSpawner')
 export class RingDebugSpawner extends Component {
     ringLayer: RingLayer | null = null;
+    scoreJudge: ScoreJudge | null = null;
 
     private slotIndex = 0;
     private tankTransform: UITransform | null = null;
@@ -59,6 +61,7 @@ export class RingDebugSpawner extends Component {
         }
         if (event.keyCode === KeyCode.KEY_R) {
             this.ringLayer?.clearAll();
+            this.scoreJudge?.reset();
             console.log('[RingDebug] 已清空所有圈');
         }
     };

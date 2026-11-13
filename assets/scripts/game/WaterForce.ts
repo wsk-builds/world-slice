@@ -1,30 +1,37 @@
-import { _decorator, Component, Node, PHYSICS_2D_PTM_RATIO, Vec2 } from 'cc';
+import { _decorator, Component, Node } from 'cc';
 import { SolvedFeelConfig } from '../core/flow/FeelSolver';
-import { FlowField, FlowVec2 } from '../core/flow/FlowField';
+import { FlowField, FlowVec3 } from '../core/flow/FlowField';
 import { calcEndpointFollowAccel } from '../core/flow/WaterFollow';
 import { Bladder } from '../core/input/Bladder';
+import { Vec3Like } from '../core/physics3d/Math3D';
 import { PhysicsStepper } from './PhysicsStepper';
 import { Ring } from './Ring';
 import { RingLayer } from './RingLayer';
 
 const { ccclass } = _decorator;
 
-const FORCE_EPSILON = 1e-5;
-
-const tempWorldLeft = new Vec2();
-const tempWorldRight = new Vec2();
-const tempEndWorldVel = new Vec2();
-const tempForce = new Vec2();
-const tempWaterVel: FlowVec2 = { x: 0, y: 0 };
-const tempLeftAccel: FlowVec2 = { x: 0, y: 0 };
-const tempRightAccel: FlowVec2 = { x: 0, y: 0 };
+const samplePoints: readonly [Vec3Like, Vec3Like, Vec3Like, Vec3Like] = [
+    { x: 0, y: 0, z: 0 },
+    { x: 0, y: 0, z: 0 },
+    { x: 0, y: 0, z: 0 },
+    { x: 0, y: 0, z: 0 },
+];
+const sampleAccels: readonly [FlowVec3, FlowVec3, FlowVec3, FlowVec3] = [
+    { x: 0, y: 0, z: 0 },
+    { x: 0, y: 0, z: 0 },
+    { x: 0, y: 0, z: 0 },
+    { x: 0, y: 0, z: 0 },
+];
+const tempWaterVel3D: FlowVec3 = { x: 0, y: 0, z: 0 };
+const tempPtVel: Vec3Like = { x: 0, y: 0, z: 0 };
+const tempFollow2D = { x: 0, y: 0 };
 
 /**
- * 水流施力组件（GDD §3.3，T008 / T010），挂在 TankRoot 上：
+ * 三维水流施力组件（挂在 TankRoot 上）：
  * 每个物理步之前：
- * 1. 将左右气囊的当前出水强度喂给 FlowField，并按物理步长 dt 推进 FlowField 与气囊；
- * 2. 对每个未锁定圈的左右两个端点分别采样缸坐标水速；
- * 3. 按「跟随度 ×（水速 − 端点速度）」计算加速度（按翻滚灵敏度调整差分力矩），换算为 Box2D 米制单位力并施于左右端点。
+ * 1. 将左右气囊的当前出水强度喂给 FlowField，推进 FlowField 与气囊；
+ * 2. 对每个未锁定正圆环圆周上的 4 个正交采样点（+U, -U, +V, -V）分别采样三维水速；
+ * 3. 一端在喷流内、另一端在喷流外或受前后纵深涡流差作用时，天然产生绕 X/Y/Z 任意轴的真 3D 翻转力矩！
  */
 @ccclass('WaterForce')
 export class WaterForce extends Component {
@@ -68,14 +75,14 @@ export class WaterForce extends Component {
         this.stepper?.offBeforeStep(this.onBeforeStep);
     }
 
-    /** 刷新底层水流与气囊配置（供 T010/T011 调参动态生效） */
+    /** 刷新底层水流与气囊配置（供调参动态生效） */
     applyConfig(): void {
         this.flowField?.applyConfig();
         this.leftBladder?.applyConfig();
         this.rightBladder?.applyConfig();
     }
 
-    /** 重置水流与左右气囊状态（重开或切关时使用） */
+    /** 重置水流与左右气囊状态 */
     reset(seed?: number): void {
         this.leftBladder?.reset();
         this.rightBladder?.reset();
@@ -94,7 +101,7 @@ export class WaterForce extends Component {
         this.leftBladder?.step(dt);
         this.rightBladder?.step(dt);
 
-        if (!this.ringLayer) {
+        if (!this.ringLayer || !this.stepper) {
             return;
         }
 
@@ -103,79 +110,109 @@ export class WaterForce extends Component {
             return;
         }
 
-        const origin = this.node.worldPosition;
-        const sx = this.node.worldScale.x || 1;
-        const sy = this.node.worldScale.y || 1;
+        const halfDepth = this.stepper.world.tank.halfDepth;
         const torqueScale = SolvedFeelConfig.tumbleTorqueScale;
+        const zSwirl = SolvedFeelConfig.zSwirlSpeed;
+        const zCenterRate = SolvedFeelConfig.zCenteringRate;
 
         for (let i = 0; i < rings.length; i++) {
             const ring = rings[i];
             if (!ring.isValid || ring.locked || !ring.isBodyReady) {
                 continue;
             }
-
-            ring.getWorldEnds(tempWorldLeft, tempWorldRight);
-            const halfMass = 0.5 * ring.body.getMass();
-
-            this.computeAccelAtEndpoint(ring, tempWorldLeft, origin.x, origin.y, sx, sy, tempLeftAccel);
-            this.computeAccelAtEndpoint(ring, tempWorldRight, origin.x, origin.y, sx, sy, tempRightAccel);
-
-            if (torqueScale !== 1) {
-                const avgX = 0.5 * (tempLeftAccel.x + tempRightAccel.x);
-                const avgY = 0.5 * (tempLeftAccel.y + tempRightAccel.y);
-                tempLeftAccel.x = avgX + torqueScale * (tempLeftAccel.x - avgX);
-                tempLeftAccel.y = avgY + torqueScale * (tempLeftAccel.y - avgY);
-                tempRightAccel.x = avgX + torqueScale * (tempRightAccel.x - avgX);
-                tempRightAccel.y = avgY + torqueScale * (tempRightAccel.y - avgY);
-            }
-
-            this.applyAccelAtPoint(ring, tempWorldLeft, tempLeftAccel, sx, sy, halfMass);
-            this.applyAccelAtPoint(ring, tempWorldRight, tempRightAccel, sx, sy, halfMass);
+            this.applyWaterToRing(ring, halfDepth, torqueScale, zSwirl, zCenterRate);
         }
     };
 
-    private computeAccelAtEndpoint(
+    private applyWaterToRing(
         ring: Ring,
-        worldEnd: Vec2,
-        originX: number,
-        originY: number,
-        sx: number,
-        sy: number,
-        outAccel: FlowVec2,
+        halfDepth: number,
+        torqueScale: number,
+        zSwirl: number,
+        zCenterRate: number,
     ): void {
-        const tankX = (worldEnd.x - originX) / sx;
-        const tankY = (worldEnd.y - originY) / sy;
+        const b = ring.body3D;
+        const R = b.majorRadius;
 
-        this.flowField.velocityAt(tankX, tankY, tempWaterVel);
-        ring.body.getLinearVelocityFromWorldPoint(worldEnd, tempEndWorldVel);
+        // 圆环中心圆上的 4 个对称采样点：+U, -U, +V, -V
+        samplePoints[0].x = b.x + b.basisU.x * R;
+        samplePoints[0].y = b.y + b.basisU.y * R;
+        samplePoints[0].z = b.z + b.basisU.z * R;
 
-        const endTankVx = tempEndWorldVel.x / sx;
-        const endTankVy = tempEndWorldVel.y / sy;
+        samplePoints[1].x = b.x - b.basisU.x * R;
+        samplePoints[1].y = b.y - b.basisU.y * R;
+        samplePoints[1].z = b.z - b.basisU.z * R;
 
-        calcEndpointFollowAccel(
-            tempWaterVel.x,
-            tempWaterVel.y,
-            endTankVx,
-            endTankVy,
-            SolvedFeelConfig.flowFollowRate,
-            ring.kindConfig.flowFollow,
-            outAccel,
-        );
-    }
+        samplePoints[2].x = b.x + b.basisV.x * R;
+        samplePoints[2].y = b.y + b.basisV.y * R;
+        samplePoints[2].z = b.z + b.basisV.z * R;
 
-    private applyAccelAtPoint(
-        ring: Ring,
-        worldEnd: Vec2,
-        accel: FlowVec2,
-        sx: number,
-        sy: number,
-        halfMass: number,
-    ): void {
-        const fx = (halfMass * accel.x * sx) / PHYSICS_2D_PTM_RATIO;
-        const fy = (halfMass * accel.y * sy) / PHYSICS_2D_PTM_RATIO;
+        samplePoints[3].x = b.x - b.basisV.x * R;
+        samplePoints[3].y = b.y - b.basisV.y * R;
+        samplePoints[3].z = b.z - b.basisV.z * R;
 
-        if (Math.abs(fx) > FORCE_EPSILON || Math.abs(fy) > FORCE_EPSILON) {
-            ring.body.applyForce(tempForce.set(fx, fy), worldEnd, true);
+        const baseRate = SolvedFeelConfig.flowFollowRate;
+        const kindFollow = ring.kindConfig.flowFollow;
+        const effRate = Math.max(0, baseRate * kindFollow);
+
+        let avgAx = 0;
+        let avgAy = 0;
+        let avgAz = 0;
+
+        for (let k = 0; k < 4; k++) {
+            const pt = samplePoints[k];
+            const acc = sampleAccels[k];
+
+            this.flowField.velocityAt3D(pt.x, pt.y, pt.z, halfDepth, zSwirl, zCenterRate, tempWaterVel3D);
+            b.getPointVelocity(pt.x, pt.y, pt.z, tempPtVel);
+
+            calcEndpointFollowAccel(
+                tempWaterVel3D.x,
+                tempWaterVel3D.y,
+                tempPtVel.x,
+                tempPtVel.y,
+                baseRate,
+                kindFollow,
+                tempFollow2D,
+            );
+
+            acc.x = tempFollow2D.x;
+            acc.y = tempFollow2D.y;
+            acc.z = effRate * (tempWaterVel3D.z - tempPtVel.z);
+
+            avgAx += acc.x;
+            avgAy += acc.y;
+            avgAz += acc.z;
+        }
+
+        avgAx *= 0.25;
+        avgAy *= 0.25;
+        avgAz *= 0.25;
+
+        const quarterMass = 0.25 * b.mass;
+        for (let k = 0; k < 4; k++) {
+            const pt = samplePoints[k];
+            const acc = sampleAccels[k];
+            const ax = avgAx + torqueScale * (acc.x - avgAx);
+            const ay = avgAy + torqueScale * (acc.y - avgAy);
+            const az = avgAz + torqueScale * (acc.z - avgAz);
+
+            b.applyForceAtPoint(quarterMass * ax, quarterMass * ay, quarterMass * az, pt.x, pt.y, pt.z);
+        }
+
+        // 水流体盘面俯仰流体动力：正圆环穿水运动时，盘面迎水偏角会产生自然的叶子飘落/翻滚流体力矩
+        const relVx = tempWaterVel3D.x - b.vx;
+        const relVy = tempWaterVel3D.y - b.vy;
+        const relVz = tempWaterVel3D.z - b.vz;
+        const relSpd = Math.hypot(relVx, relVy, relVz);
+        if (relSpd > 25 && torqueScale > 0.05) {
+            const dotN = (relVx * b.basisN.x + relVy * b.basisN.y + relVz * b.basisN.z) / relSpd;
+            // cross(N, v_rel) 推动圆环随水流翻滚，产生视频里标志性的 3D 翻花感
+            const cx = b.basisN.y * relVz - b.basisN.z * relVy;
+            const cy = b.basisN.z * relVx - b.basisN.x * relVz;
+            const cz = b.basisN.x * relVy - b.basisN.y * relVx;
+            const flutterGain = 0.22 * b.mass * R * dotN * torqueScale;
+            b.applyTorque(cx * flutterGain, cy * flutterGain, cz * flutterGain);
         }
     }
 }

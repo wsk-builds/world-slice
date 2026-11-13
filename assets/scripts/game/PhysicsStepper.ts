@@ -1,31 +1,38 @@
-import { _decorator, Component, PhysicsSystem2D } from 'cc';
+import { _decorator, Component } from 'cc';
+import { TorusWorld3D } from '../core/physics3d/TorusWorld3D';
 
 const { ccclass } = _decorator;
 
 export type StepCallback = (dt: number) => void;
 
+const FIXED_STEP_DT = 1 / 60;
+const MAX_SUB_STEPS_PER_FRAME = 4;
+
 /**
- * 物理步控制器：包住 PhysicsSystem2D.instance.physicsWorld.step，
+ * 3D 物理步控制器：以固定 1/60s 步长推进 TorusWorld3D，
  * 提供每步之前 / 之后回调、running 暂停开关与累计物理时间。
  */
 @ccclass('PhysicsStepper')
 export class PhysicsStepper extends Component {
-    /** false 时跳过物理步（暂停），不关闭 PhysicsSystem2D 以保留节点-刚体同步 */
+    /** false 时跳过物理步（暂停），保持刚体与视觉静止 */
     running = true;
 
+    readonly world = new TorusWorld3D();
+
     private _elapsed = 0;
+    private accumulator = 0;
     private beforeListeners: StepCallback[] = [];
     private afterListeners: StepCallback[] = [];
-    private restoreEngineStep: (() => void) | null = null;
 
     /** 累计物理模拟时间（秒） */
     get elapsed(): number {
         return this._elapsed;
     }
 
-    /** 重置累计物理时间 */
+    /** 重置累计物理时间与帧余量 */
     resetElapsed(): void {
         this._elapsed = 0;
+        this.accumulator = 0;
     }
 
     onBeforeStep(cb: StepCallback): void {
@@ -54,40 +61,34 @@ export class PhysicsStepper extends Component {
         }
     }
 
-    onEnable(): void {
-        if (this.restoreEngineStep) {
-            return;
+    /** 手动走一步指定 dt（供挂机自测加速或调试单步使用） */
+    stepOnce(dt: number = FIXED_STEP_DT): void {
+        const before = this.beforeListeners.slice();
+        for (let i = 0; i < before.length; i++) {
+            before[i](dt);
         }
-        const world = PhysicsSystem2D.instance.physicsWorld;
-        const engineStep = world.step;
 
-        world.step = (dt: number, velocityIterations?: number, positionIterations?: number): void => {
-            if (!this.running) {
-                return;
-            }
-            const before = this.beforeListeners.slice();
-            for (let i = 0; i < before.length; i++) {
-                before[i](dt);
-            }
+        this.world.step(dt);
+        this._elapsed += dt;
 
-            engineStep.call(world, dt, velocityIterations, positionIterations);
-            this._elapsed += dt;
-
-            const after = this.afterListeners.slice();
-            for (let i = 0; i < after.length; i++) {
-                after[i](dt);
-            }
-        };
-
-        this.restoreEngineStep = () => {
-            world.step = engineStep;
-        };
+        const after = this.afterListeners.slice();
+        for (let i = 0; i < after.length; i++) {
+            after[i](dt);
+        }
     }
 
-    onDisable(): void {
-        if (this.restoreEngineStep) {
-            this.restoreEngineStep();
-            this.restoreEngineStep = null;
+    update(dt: number): void {
+        if (!this.running) {
+            return;
+        }
+        const clampedDt = Math.min(Math.max(0, dt), FIXED_STEP_DT * MAX_SUB_STEPS_PER_FRAME);
+        this.accumulator += clampedDt;
+
+        let sub = 0;
+        while (this.accumulator >= FIXED_STEP_DT && sub < MAX_SUB_STEPS_PER_FRAME) {
+            this.stepOnce(FIXED_STEP_DT);
+            this.accumulator -= FIXED_STEP_DT;
+            sub++;
         }
     }
 }

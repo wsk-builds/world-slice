@@ -1,9 +1,10 @@
-import { _decorator, Color, Component, Graphics, Layers, Node, UITransform } from 'cc';
+import { _decorator, Color, Component, Graphics, Node, UITransform } from 'cc';
 import { Palette } from '../config/Palette';
 import { TankSpace } from '../config/TankSpace';
 import { FlowField } from '../core/flow/FlowField';
 import { PhysicsStepper } from '../game/PhysicsStepper';
 import { BubbleItem, BubblePool, MAX_BUBBLES } from './BubblePool';
+import { RenderLayers } from './Stage3DRig';
 
 const { ccclass } = _decorator;
 
@@ -29,7 +30,7 @@ export class Bubbles extends Component {
 
     static create(tankRoot: Node, flowField: FlowField): Bubbles {
         const node = new Node('Bubbles');
-        node.layer = Layers.Enum.UI_2D;
+        node.layer = RenderLayers.BG_2D;
 
         const transform = node.addComponent(UITransform);
         transform.setContentSize(TankSpace.width, TankSpace.height);

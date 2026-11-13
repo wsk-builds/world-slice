@@ -18,6 +18,12 @@ export type FlowSide = 'left' | 'right';
 
 export type FlowVec2 = Point2D;
 
+export interface FlowVec3 {
+    x: number;
+    y: number;
+    z: number;
+}
+
 /** 函数形式的额外水流项：计算缸坐标 (x, y) 处的速度分量写入 out */
 export type FlowTermFn = (x: number, y: number, out: FlowVec2) => void;
 
@@ -353,6 +359,20 @@ export class TurbulenceFlowTerm implements FlowTermObject {
         out.x *= amp;
         out.y *= amp;
     }
+
+    /** 采样与 X-Y 解耦的前后纵深 Z 向归一化涡流（[-1, 1] 量级，纯空间时间函数不消耗随机序列） */
+    sampleNormalizedZ(x: number, y: number, z: number, outScratch: FlowVec2): number {
+        if (this.scale === 0) {
+            return 0;
+        }
+        this.curlNoise.sample(
+            (x + 313.7 + z * 0.65) / this.spatialScale,
+            (y + 577.3 - z * 0.65) / this.spatialScale,
+            this.elapsed * this.timeRate + 19.4,
+            outScratch,
+        );
+        return outScratch.x * this.scale;
+    }
 }
 
 const scratchTerm: FlowVec2 = { x: 0, y: 0 };
@@ -522,6 +542,39 @@ export class FlowField {
         target.x = vx;
         target.y = vy;
         return target;
+    }
+
+    /**
+     * 采样薄层 3D 水缸内 (x, y, z) 处的三维水速（像素/秒）：
+     * - X/Y 主流场与 2D 气泡严格同源，离 z=0 中平面越远水速略柔化以自然产生三维俯仰力矩；
+     * - Z 向兼具确定性旋度涡流（驱动正圆环绕 X/Y 轴真 3D 侧翻）与喷流期向 z=0 柱平面的柔和回中。
+     */
+    velocityAt3D(
+        x: number,
+        y: number,
+        z: number,
+        halfDepth: number,
+        zSwirlSpeed: number,
+        zCenteringRate: number,
+        out: FlowVec3 = { x: 0, y: 0, z: 0 },
+    ): FlowVec3 {
+        this.velocityAt(x, y, scratchTerm);
+        const uZ = halfDepth > 1 ? Math.max(-1, Math.min(1, z / halfDepth)) : 0;
+        const zProfile = 1 - 0.14 * uZ * uZ;
+
+        out.x = scratchTerm.x * zProfile;
+        out.y = scratchTerm.y * zProfile;
+
+        const jetAct = Math.min(1, this.jet.getLevel('left') + this.jet.getLevel('right'));
+        const circAct = Math.abs(this.circulation.getMomentum());
+        const totalAct = Math.min(1, jetAct + circAct * 0.7);
+
+        const swirlNorm = this.turbulence.sampleNormalizedZ(x, y, z, scratchTerm);
+        const swirlVz = swirlNorm * zSwirlSpeed * (0.22 + 0.78 * totalAct);
+        const centerVz = -z * zCenteringRate * (0.15 + 0.85 * jetAct);
+
+        out.z = swirlVz + centerVz;
+        return out;
     }
 
     private syncTurbulenceActivity(): void {

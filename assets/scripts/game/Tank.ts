@@ -1,17 +1,15 @@
-import {
-    _decorator, BoxCollider2D, Component, ERigidBody2DType, Graphics, Layers, Node, PolygonCollider2D, RigidBody2D,
-    Size, toRadian, UITransform, Vec2,
-} from 'cc';
+import { _decorator, Component, Graphics, Node, toRadian, UITransform } from 'cc';
 import { FeelConfig } from '../config/FeelConfig';
 import { Palette } from '../config/Palette';
-import { PhysicsGroupBit } from '../config/PhysicsGroups';
 import { TankSpace } from '../config/TankSpace';
+import { RenderLayers } from '../render/Stage3DRig';
+import { PhysicsStepper } from './PhysicsStepper';
 import { buildTankGeometry, TankGeometryData } from './TankGeometry';
 
 const { ccclass } = _decorator;
 
 /**
- * 水缸边界：静态物理墙体（四面直墙 + 左右向内圆弧底角折线）、灰盒内壁与海眼标记绘制。
+ * 水缸边界：同步 TorusWorld3D 六面墙与圆弧底角尺寸，并在 2D 背景层绘制深水底色、圆弧内壁与海眼标记。
  * 节点原点位于内屏左下角（缸坐标原点）。
  */
 @ccclass('Tank')
@@ -21,7 +19,7 @@ export class Tank extends Component {
 
     static create(tankRoot: Node): Tank {
         const node = new Node('Tank');
-        node.layer = Layers.Enum.UI_2D;
+        node.layer = RenderLayers.BG_2D;
 
         const transform = node.addComponent(UITransform);
         transform.setContentSize(TankSpace.width, TankSpace.height);
@@ -34,16 +32,20 @@ export class Tank extends Component {
     }
 
     onLoad(): void {
-        const geom = buildTankGeometry();
-        this.geometry = geom;
+        this.geometry = buildTankGeometry();
+        const stepper = this.node.parent?.getComponent(PhysicsStepper);
+        stepper?.world.updateTankBounds(TankSpace.width, TankSpace.height);
 
-        this.createWallColliders(geom);
         this.gfx = this.node.getComponent(Graphics) ?? this.node.addComponent(Graphics);
         this.redraw();
     }
 
     /** 按最新几何与海眼位置重绘水缸底色、圆弧底角及左右海眼标记（共用同一 Graphics） */
     redraw(): void {
+        this.geometry = buildTankGeometry();
+        const stepper = this.node.parent?.getComponent(PhysicsStepper);
+        stepper?.world.updateTankBounds(TankSpace.width, TankSpace.height);
+
         if (!this.gfx || !this.geometry) {
             return;
         }
@@ -52,39 +54,14 @@ export class Tank extends Component {
         this.drawNozzles(this.gfx);
     }
 
-    private createWallColliders(geom: TankGeometryData): void {
-        const body = this.node.addComponent(RigidBody2D);
-        body.type = ERigidBody2DType.Static;
-        body.group = PhysicsGroupBit.WALL;
-
-        for (const rect of geom.wallRects) {
-            const box = this.node.addComponent(BoxCollider2D);
-            box.group = PhysicsGroupBit.WALL;
-            box.offset = new Vec2(rect.x + rect.width / 2, rect.y + rect.height / 2);
-            box.size = new Size(rect.width, rect.height);
-            box.friction = 0.05;
-            box.restitution = 0.1;
-            box.apply();
-        }
-
-        for (const strip of geom.cornerStrips) {
-            const poly = this.node.addComponent(PolygonCollider2D);
-            poly.group = PhysicsGroupBit.WALL;
-            poly.points = strip.map((p) => new Vec2(p.x, p.y));
-            poly.friction = 0.02;
-            poly.restitution = 0.1;
-            poly.apply();
-        }
-    }
-
     private drawWalls(gfx: Graphics, geom: TankGeometryData): void {
         const { width, height, leftCornerArc, rightCornerArc } = geom;
 
-        // 内屏深水底色（与水缸内壁共用同一 Graphics，省去 TankRoot 独立 Graphics 显存）
+        // 内屏深水底色（与水缸内壁共用同一 Graphics）
         gfx.fillColor = Palette.innerWaterBg;
         gfx.fillRect(0, 0, width, height);
 
-        // 填充左下角垫块（内壁弧线与直角外角 (0, 0) 之间）
+        // 填充左下角圆弧垫块
         gfx.fillColor = Palette.tankCornerFill;
         gfx.moveTo(0, 0);
         for (const p of leftCornerArc) {
@@ -93,7 +70,7 @@ export class Tank extends Component {
         gfx.close();
         gfx.fill();
 
-        // 填充右下角垫块（内壁弧线与直角外角 (width, 0) 之间）
+        // 填充右下角圆弧垫块
         gfx.moveTo(width, 0);
         for (const p of rightCornerArc) {
             gfx.lineTo(p.x, p.y);
@@ -126,7 +103,7 @@ export class Tank extends Component {
         gfx.stroke();
     }
 
-    /** 在缸底绘制左右海眼出水口灰盒标识（无碰撞体，仅标示喷口位置与内倾朝向） */
+    /** 在缸底绘制左右海眼出水口灰盒标识（标示喷口位置与内倾朝向） */
     private drawNozzles(gfx: Graphics): void {
         const leftX = TankSpace.pctToPxX(FeelConfig.nozzlePosPct);
         const rightX = TankSpace.pctToPxX(100 - FeelConfig.nozzlePosPct);
@@ -137,9 +114,9 @@ export class Tank extends Component {
     }
 
     private drawSingleNozzle(gfx: Graphics, centerX: number, tiltRad: number): void {
-        const baseHalfW = 28;
-        const mouthHalfW = 19;
-        const spoutH = 14;
+        const baseHalfW = 24;
+        const mouthHalfW = 16;
+        const spoutH = 12;
         const shiftX = Math.sin(tiltRad) * spoutH;
         const topY = Math.cos(tiltRad) * spoutH;
 

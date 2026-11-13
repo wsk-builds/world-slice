@@ -1,90 +1,119 @@
-import {
-    _decorator, BoxCollider2D, Component, ERigidBody2DType, Graphics, Layers, Node, RigidBody2D, Size, UITransform,
-    Vec2,
-} from 'cc';
+import { _decorator, Component, MeshRenderer, Node, UITransform } from 'cc';
 import { FeelConfig } from '../config/FeelConfig';
 import { calcRingPillarGeometry, RingPillarGeometry } from '../config/GameConst';
-import { Palette } from '../config/Palette';
-import { PhysicsGroupBit } from '../config/PhysicsGroups';
 import { TankSpace } from '../config/TankSpace';
+import { PillarCollider3D } from '../core/physics3d/PillarCollider3D';
+import {
+    bindRendererMaterial,
+    createPillarCrossGuardMesh,
+    createPillarSpindleMesh,
+    getOrCreatePillarMaterials,
+} from '../render/MeshFactory3D';
+import { RenderLayers, Stage3DRig } from '../render/Stage3DRig';
+import { PhysicsStepper } from './PhysicsStepper';
 
 const { ccclass } = _decorator;
 
 export type PillarSide = 'left' | 'right';
 
 /**
- * 悬空镇脉玉柱（灰盒）。
- * 节点原点位于底托底边中心（缸坐标）：底托向上为 [0, baseHeight]，柱杆向上为 [baseHeight, baseHeight + rodHeight]。
- * 两根柱子共用父容器上的同一个 Graphics 绘图，节省显存。
+ * 三段式锥形十字玉柱（复刻参考视频造型：上尖下粗圆锥杆 + 十字四翼卡托 + 下端悬空收尖尾椎）。
+ * 2D 节点保留在 TankRoot 下提供缸坐标引用，3D 网格挂在 Stage3DRig.tank3DRoot 下参与深度缓冲与光照渲染，
+ * 物理碰撞由 PillarCollider3D 注册进 TorusWorld3D。
  */
 @ccclass('Pillar')
 export class Pillar extends Component {
     side: PillarSide = 'left';
+    collider3D!: PillarCollider3D;
 
-    private baseCollider: BoxCollider2D | null = null;
-    private rodCollider: BoxCollider2D | null = null;
-    private sharedGraphics: Graphics | null = null;
-    private siblingPillar: Pillar | null = null;
     private geom: RingPillarGeometry = calcRingPillarGeometry(TankSpace.width);
+    private view3DRoot: Node | null = null;
+    private spindleRenderer: MeshRenderer | null = null;
+    private crossRenderer: MeshRenderer | null = null;
 
-    /** 创建左右一对悬空柱（共用同一个 Graphics 节点绘制） */
-    static createPair(tankRoot: Node): [Pillar, Pillar] {
+    static createPair(tankRoot: Node, tank3DRoot: Node): [Pillar, Pillar] {
         const layerNode = new Node('Pillars');
-        layerNode.layer = Layers.Enum.UI_2D;
+        layerNode.layer = RenderLayers.BG_2D;
         const layerTransform = layerNode.addComponent(UITransform);
         layerTransform.setContentSize(TankSpace.width, TankSpace.height);
         layerTransform.setAnchorPoint(0, 0);
         layerNode.setPosition(0, 0, 0);
         tankRoot.addChild(layerNode);
 
-        const sharedGfx = layerNode.addComponent(Graphics);
+        const stepper = tankRoot.getComponent(PhysicsStepper);
 
-        const left = Pillar.createOne('left', sharedGfx);
-        const right = Pillar.createOne('right', sharedGfx);
-        left.siblingPillar = right;
-        right.siblingPillar = left;
+        const left = Pillar.createOne('left', tank3DRoot, stepper);
+        const right = Pillar.createOne('right', tank3DRoot, stepper);
+
+        layerNode.addChild(left.node);
+        layerNode.addChild(right.node);
 
         left.applyLayout();
         right.applyLayout();
-        layerNode.addChild(left.node);
-        layerNode.addChild(right.node);
-        Pillar.redrawPair(sharedGfx, left, right);
 
         return [left, right];
     }
 
-    private static createOne(side: PillarSide, sharedGfx: Graphics): Pillar {
-        const node = new Node(side === 'left' ? 'Pillar_Left' : 'Pillar_Right');
-        node.layer = Layers.Enum.UI_2D;
+    private static createOne(side: PillarSide, tank3DRoot: Node, stepper: PhysicsStepper | null): Pillar {
+        const name = side === 'left' ? 'Pillar_Left' : 'Pillar_Right';
+        const node = new Node(name);
+        node.layer = RenderLayers.BG_2D;
 
         const transform = node.addComponent(UITransform);
         transform.setAnchorPoint(0.5, 0);
 
-        const body = node.addComponent(RigidBody2D);
-        body.type = ERigidBody2DType.Static;
-        body.group = PhysicsGroupBit.PILLAR;
-
-        const baseCollider = node.addComponent(BoxCollider2D);
-        baseCollider.group = PhysicsGroupBit.PILLAR;
-        baseCollider.friction = 0.2;
-        baseCollider.restitution = 0.05;
-
-        const rodCollider = node.addComponent(BoxCollider2D);
-        rodCollider.group = PhysicsGroupBit.PILLAR;
-        rodCollider.friction = 0.15;
-        rodCollider.restitution = 0.05;
-
         const pillar = node.addComponent(Pillar);
         pillar.side = side;
-        pillar.baseCollider = baseCollider;
-        pillar.rodCollider = rodCollider;
-        pillar.sharedGraphics = sharedGfx;
 
+        const geom = calcRingPillarGeometry(TankSpace.width);
+        const xPct = side === 'left' ? FeelConfig.pillarPosPct : 100 - FeelConfig.pillarPosPct;
+        const x = TankSpace.pctToPxX(xPct);
+        const y = TankSpace.pctToPxY(FeelConfig.pillarBottomPct);
+
+        pillar.collider3D = new PillarCollider3D(x, y, geom);
+        stepper?.world.addPillar(pillar.collider3D);
+
+        pillar.setup3DView(name, tank3DRoot, geom);
         return pillar;
     }
 
-    /** 按 FeelConfig 与 GameConst 刷新位置、碰撞体尺寸及共享绘制 */
-    applyLayout(redraw = false): void {
+    private setup3DView(name: string, tank3DRoot: Node, geom: RingPillarGeometry): void {
+        const root3D = new Node(`${name}_3D`);
+        root3D.layer = RenderLayers.RING_PILLAR_3D;
+        tank3DRoot.addChild(root3D);
+        this.view3DRoot = root3D;
+
+        const spindleNode = new Node('Spindle');
+        spindleNode.layer = RenderLayers.RING_PILLAR_3D;
+        root3D.addChild(spindleNode);
+        const spindleMr = spindleNode.addComponent(MeshRenderer);
+        spindleMr.mesh = createPillarSpindleMesh(geom);
+        bindRendererMaterial(
+            () => getOrCreatePillarMaterials().shaftMat,
+            (m) => {
+                if (spindleMr.isValid) spindleMr.material = m;
+            },
+        );
+        this.spindleRenderer = spindleMr;
+
+        const crossNode = new Node('CrossGuard');
+        crossNode.layer = RenderLayers.RING_PILLAR_3D;
+        crossNode.setPosition(0, Stage3DRig.pxTo3D(geom.pillarTailHeight + geom.pillarBaseHeight * 0.5), 0);
+        root3D.addChild(crossNode);
+        const crossMr = crossNode.addComponent(MeshRenderer);
+        crossMr.mesh = createPillarCrossGuardMesh(geom);
+        bindRendererMaterial(
+            () => getOrCreatePillarMaterials().crossMat,
+            (m) => {
+                if (crossMr.isValid) crossMr.material = m;
+            },
+        );
+        this.crossRenderer = crossMr;
+    }
+
+    /** 按 FeelConfig 与 GameConst 刷新位置、3D 物理碰撞与 3D 模型 */
+    applyLayout(_redraw = false): void {
+        const prevTotal = this.geom.pillarTotalHeight;
         const geom = calcRingPillarGeometry(TankSpace.width);
         this.geom = geom;
 
@@ -93,71 +122,63 @@ export class Pillar extends Component {
         const y = TankSpace.pctToPxY(FeelConfig.pillarBottomPct);
         this.node.setPosition(x, y, 0);
 
-        const totalH = geom.pillarBaseHeight + geom.pillarHeight;
-        this.node.getComponent(UITransform)?.setContentSize(geom.pillarBaseWidth, totalH);
+        this.node.getComponent(UITransform)?.setContentSize(geom.pillarBaseWidth, geom.pillarTotalHeight);
+        this.collider3D?.updateLayout(x, y, geom);
 
-        if (this.baseCollider) {
-            this.baseCollider.offset = new Vec2(0, geom.pillarBaseHeight / 2);
-            this.baseCollider.size = new Size(geom.pillarBaseWidth, geom.pillarBaseHeight);
-            this.baseCollider.apply();
+        if (this.view3DRoot) {
+            this.view3DRoot.setPosition(Stage3DRig.pxTo3D(x), Stage3DRig.pxTo3D(y), 0);
+            if (Math.abs(prevTotal - geom.pillarTotalHeight) > 0.01) {
+                if (this.spindleRenderer) {
+                    this.spindleRenderer.mesh = createPillarSpindleMesh(geom);
+                }
+                if (this.crossRenderer) {
+                    this.crossRenderer.mesh = createPillarCrossGuardMesh(geom);
+                    this.crossRenderer.node.setPosition(
+                        0,
+                        Stage3DRig.pxTo3D(geom.pillarTailHeight + geom.pillarBaseHeight * 0.5),
+                        0,
+                    );
+                }
+            }
         }
+    }
 
-        if (this.rodCollider) {
-            this.rodCollider.offset = new Vec2(0, geom.pillarBaseHeight + geom.pillarHeight / 2);
-            this.rodCollider.size = new Size(geom.pillarWidth, geom.pillarHeight);
-            this.rodCollider.apply();
-        }
-
-        if (redraw && this.sharedGraphics && this.siblingPillar) {
-            Pillar.redrawPair(this.sharedGraphics, this, this.siblingPillar);
+    onDestroy(): void {
+        if (this.view3DRoot && this.view3DRoot.isValid) {
+            this.view3DRoot.destroy();
+            this.view3DRoot = null;
         }
     }
 
     /** 柱尖在缸坐标系下的 Y 坐标 */
     get tipY(): number {
-        return this.node.position.y + this.geom.pillarBaseHeight + this.geom.pillarHeight;
+        return this.collider3D ? this.collider3D.tipY : this.node.position.y + this.geom.pillarTotalHeight;
     }
 
-    /** 底托顶面在缸坐标系下的 Y 坐标 */
+    /** 十字卡托顶面（叠圈起始面）在缸坐标系下的 Y 坐标 */
     get baseTopY(): number {
-        return this.node.position.y + this.geom.pillarBaseHeight;
+        return this.collider3D
+            ? this.collider3D.baseTopY
+            : this.node.position.y + this.geom.pillarTailHeight + this.geom.pillarBaseHeight;
     }
 
-    /** 柱杆宽度 */
+    /** 锥形柱杆在指定缸高 y 处的半径（像素） */
+    shaftRadiusAtY(y: number): number {
+        return this.collider3D ? this.collider3D.shaftRadiusAtY(y) : this.geom.pillarWidth * 0.5;
+    }
+
+    /** 柱杆平均宽度 */
     get rodWidth(): number {
         return this.geom.pillarWidth;
     }
 
-    /** 柱杆高度（等于 6 个圈叠放高度） */
+    /** 上段套圈柱杆高度 */
     get rodHeight(): number {
         return this.geom.pillarHeight;
     }
 
-    /** 底托宽度（比中号圈内径宽） */
+    /** 十字四翼卡托横向总宽 */
     get baseWidth(): number {
         return this.geom.pillarBaseWidth;
-    }
-
-    private static redrawPair(gfx: Graphics, a: Pillar, b: Pillar): void {
-        gfx.clear();
-        for (const p of [a, b]) {
-            const x = p.node.position.x;
-            const y = p.node.position.y;
-            const { pillarWidth, pillarHeight, pillarBaseWidth, pillarBaseHeight } = p.geom;
-
-            // 底托
-            gfx.fillColor = Palette.pillarBaseFill;
-            gfx.strokeColor = Palette.pillarBorder;
-            gfx.lineWidth = 2;
-            gfx.roundRect(x - pillarBaseWidth / 2, y, pillarBaseWidth, pillarBaseHeight, 4);
-            gfx.fill();
-            gfx.stroke();
-
-            // 柱杆
-            gfx.fillColor = Palette.pillarRodFill;
-            gfx.roundRect(x - pillarWidth / 2, y + pillarBaseHeight, pillarWidth, pillarHeight, 4);
-            gfx.fill();
-            gfx.stroke();
-        }
     }
 }

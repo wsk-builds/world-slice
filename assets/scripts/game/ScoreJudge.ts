@@ -1,9 +1,10 @@
-import { _decorator, Component, ERigidBody2DType, Node, PHYSICS_2D_PTM_RATIO, Vec2 } from 'cc';
+import { _decorator, Component, Node } from 'cc';
 import { GameConst } from '../config/GameConst';
 import {
-    calcRingTiltDeg,
+    calcRingTiltDeg3D,
     calcSlotCenterY,
-    isRingOnPillar,
+    clampLockedRingPose3D,
+    isRingOnPillar3D,
     isRingStableForLock,
     PillarStack,
 } from '../core/rules/PillarStack';
@@ -29,19 +30,15 @@ interface HoldProgress {
     elapsed: number;
 }
 
-interface RigidBody2DImpl {
-    syncPositionToPhysics?: (enableAnimated?: boolean) => void;
-    syncRotationToPhysics?: (enableAnimated?: boolean) => void;
+interface LockedLocalOffset {
+    dx: number;
+    dz: number;
 }
 
-const tempLeft = new Vec2();
-const tempRight = new Vec2();
-const tempZero = new Vec2(0, 0);
-
 /**
- * 套中判定与锁定组件（GDD §2.1、§3.2，T012），挂在 TankRoot 上：
- * 每个物理步之后检查"柱子在圈的两个端点之间，并且圈心低于柱尖"；
- * 连续稳定 0.3 秒后将圈切换为静态并对齐到对应槽位高度，之后不再受水流影响。
+ * 真 3D 套中判定与锁定组件（GDD §2.1、§3.2，T012）：
+ * 每个物理步之后检查柱子是否穿过圆环 3D 内孔且圈心低于柱尖；
+ * 连续稳定 0.3 秒后将圈切换为静态，保留自然 3D 错落微倾（限制最大歪斜度保证 6 层稳妥叠放），不再受水流冲走。
  */
 @ccclass('ScoreJudge')
 export class ScoreJudge extends Component {
@@ -55,6 +52,7 @@ export class ScoreJudge extends Component {
         right: new PillarStack<Ring>(GameConst.pillarCapacity),
     };
     private readonly holdProgress = new Map<Ring, HoldProgress>();
+    private readonly lockedOffsets = new Map<Ring, LockedLocalOffset>();
     private readonly lockListeners: RingLockedListener[] = [];
 
     static attach(tankRoot: Node, leftPillar: Pillar, rightPillar: Pillar, ringLayer: RingLayer): ScoreJudge {
@@ -116,9 +114,10 @@ export class ScoreJudge extends Component {
         this.stacks.left.clear();
         this.stacks.right.clear();
         this.holdProgress.clear();
+        this.lockedOffsets.clear();
     }
 
-    /** 同步所有已锁定圈的位置到当前柱子布局与槽位高度（供调参改柱位时联动） */
+    /** 同步所有已锁定圈的位置到当前柱子布局与槽位高度（保留各自的 3D 自然微倾与轻微偏心） */
     syncLockedRings(): void {
         for (const side of ['left', 'right'] as const) {
             const pillar = side === 'left' ? this.leftPillar : this.rightPillar;
@@ -135,8 +134,17 @@ export class ScoreJudge extends Component {
                 if (!ring.isValid) {
                     continue;
                 }
-                const slotY = calcSlotCenterY(baseTopY, thicknesses, ring.dimensions.thickness, i);
-                this.snapRingTransform(ring, pillarX, slotY);
+                const slotY = calcSlotCenterY(
+                    baseTopY,
+                    thicknesses,
+                    ring.dimensions.thickness,
+                    i,
+                    GameConst.pillarSlotPitchScale,
+                );
+                const off = this.lockedOffsets.get(ring) ?? { dx: 0, dz: 0 };
+                const q = ring.body3D.quat;
+                ring.body3D.setPose(pillarX + off.dx, slotY, off.dz, q.x, q.y, q.z, q.w);
+                ring.syncVisualFromBody();
             }
         }
     }
@@ -153,8 +161,6 @@ export class ScoreJudge extends Component {
             return;
         }
 
-        const scale = Math.abs(this.node.worldScale.x) || 1;
-
         for (let i = 0; i < rings.length; i++) {
             const ring = rings[i];
             if (!ring.isValid || ring.locked || !ring.isBodyReady) {
@@ -162,8 +168,7 @@ export class ScoreJudge extends Component {
                 continue;
             }
 
-            ring.getTankEnds(tempLeft, tempRight);
-            const matched = this.findMatchingPillar(tempLeft, tempRight);
+            const matched = this.findMatchingPillar3D(ring);
             if (!matched) {
                 this.holdProgress.delete(ring);
                 continue;
@@ -171,20 +176,25 @@ export class ScoreJudge extends Component {
 
             const stack = this.stacks[matched.side];
             const thicknesses = stack.items.map((r) => r.dimensions.thickness);
-            const slotCenterY = calcSlotCenterY(matched.baseTopY, thicknesses, ring.dimensions.thickness);
-            const centerY = 0.5 * (tempLeft.y + tempRight.y);
+            const slotCenterY = calcSlotCenterY(
+                matched.baseTopY,
+                thicknesses,
+                ring.dimensions.thickness,
+                stack.count,
+                GameConst.pillarSlotPitchScale,
+            );
 
-            const linVel = ring.body.linearVelocity;
-            const linearSpeedPx = (Math.hypot(linVel.x, linVel.y) * PHYSICS_2D_PTM_RATIO) / scale;
-            const angularSpeedRad = ring.body.angularVelocity;
-            const tiltDeg = calcRingTiltDeg(tempLeft.x, tempLeft.y, tempRight.x, tempRight.y);
+            const b = ring.body3D;
+            const linearSpeedPx = Math.hypot(b.vx, b.vy, b.vz);
+            const angularSpeedRad = Math.hypot(b.wx, b.wy, b.wz);
+            const tiltDeg = calcRingTiltDeg3D(b.basisN.x, b.basisN.y, b.basisN.z);
 
             if (
                 !isRingStableForLock({
                     linearSpeedPx,
                     angularSpeedRad,
                     tiltDeg,
-                    centerY,
+                    centerY: b.y,
                     slotCenterY,
                 })
             ) {
@@ -206,7 +216,7 @@ export class ScoreJudge extends Component {
             }
 
             this.holdProgress.delete(ring);
-            this.lockRingOnPillar(ring, matched, slotCenterY);
+            this.lockRingOnPillar3D(ring, matched, slotCenterY);
 
             const event: RingLockedEvent = {
                 ring,
@@ -222,25 +232,28 @@ export class ScoreJudge extends Component {
         }
     };
 
-    private findMatchingPillar(leftEnd: Vec2, rightEnd: Vec2): Pillar | null {
+    private findMatchingPillar3D(ring: Ring): Pillar | null {
+        const b = ring.body3D;
         const candidates = [this.leftPillar, this.rightPillar];
         for (let i = 0; i < candidates.length; i++) {
             const pillar = candidates[i];
-            if (!pillar) {
-                continue;
-            }
-            if (this.stacks[pillar.side].isFull()) {
+            if (!pillar || this.stacks[pillar.side].isFull()) {
                 continue;
             }
             if (
-                isRingOnPillar({
-                    leftEndX: leftEnd.x,
-                    leftEndY: leftEnd.y,
-                    rightEndX: rightEnd.x,
-                    rightEndY: rightEnd.y,
+                isRingOnPillar3D({
+                    centerX: b.x,
+                    centerY: b.y,
+                    centerZ: b.z,
+                    normalX: b.basisN.x,
+                    normalY: b.basisN.y,
+                    normalZ: b.basisN.z,
+                    innerRadius: ring.dimensions.innerRadius,
                     pillarX: pillar.node.position.x,
+                    pillarZ: 0,
                     baseTopY: pillar.baseTopY,
                     tipY: pillar.tipY,
+                    shaftRadiusAtY: pillar.shaftRadiusAtY(b.y),
                 })
             ) {
                 return pillar;
@@ -249,22 +262,39 @@ export class ScoreJudge extends Component {
         return null;
     }
 
-    private lockRingOnPillar(ring: Ring, pillar: Pillar, slotCenterY: number): void {
+    private lockRingOnPillar3D(ring: Ring, pillar: Pillar, slotCenterY: number): void {
         ring.locked = true;
-        ring.body.linearVelocity = tempZero;
-        ring.body.angularVelocity = 0;
-        ring.body.type = ERigidBody2DType.Static;
-        this.snapRingTransform(ring, pillar.node.position.x, slotCenterY);
-        ring.body.sleep();
-    }
+        const b = ring.body3D;
+        const pillarX = pillar.node.position.x;
+        const clamped = clampLockedRingPose3D({
+            x: b.x,
+            y: b.y,
+            z: b.z,
+            quat: b.quat,
+            pillarX,
+            pillarZ: 0,
+            slotCenterY,
+            innerRadius: ring.dimensions.innerRadius,
+            shaftRadiusAtSlot: pillar.shaftRadiusAtY(slotCenterY),
+            maxRestTiltDeg: GameConst.ringLockedRestMaxTiltDeg,
+        });
 
-    /** 绕过 stepping 守卫直接将对齐坐标写入 Box2D，防止同帧后续 syncPhysicsToScene 拉回旧刚体坐标 */
-    private snapRingTransform(ring: Ring, tankX: number, tankY: number): void {
-        ring.node.setPosition(tankX, tankY, 0);
-        ring.node.angle = 0;
-        const impl = ring.body.impl as RigidBody2DImpl | null;
-        impl?.syncPositionToPhysics?.(false);
-        impl?.syncRotationToPhysics?.(false);
+        this.lockedOffsets.set(ring, {
+            dx: clamped.x - pillarX,
+            dz: clamped.z,
+        });
+
+        b.type = 'static';
+        b.setPose(
+            clamped.x,
+            clamped.y,
+            clamped.z,
+            clamped.quat.x,
+            clamped.quat.y,
+            clamped.quat.z,
+            clamped.quat.w,
+        );
+        ring.syncVisualFromBody();
     }
 
     private pruneRemovedRings(activeRings: readonly Ring[]): void {
@@ -279,6 +309,12 @@ export class ScoreJudge extends Component {
         for (const ring of this.holdProgress.keys()) {
             if (!activeSet.has(ring)) {
                 this.holdProgress.delete(ring);
+            }
+        }
+
+        for (const ring of this.lockedOffsets.keys()) {
+            if (!activeSet.has(ring)) {
+                this.lockedOffsets.delete(ring);
             }
         }
 

@@ -1,32 +1,39 @@
-import {
-    _decorator, Color, Component, Graphics, Layers, Node, PHYSICS_2D_PTM_RATIO, toRadian, UITransform, Vec2,
-} from 'cc';
-import { GameConst } from '../config/GameConst';
-import { Palette } from '../config/Palette';
+import { _decorator, Component, Node, UITransform } from 'cc';
+import { calcRingPillarGeometry, GameConst } from '../config/GameConst';
 import { TankSpace } from '../config/TankSpace';
 import { SolvedFeelConfig } from '../core/flow/FeelSolver';
 import { RingSpec } from '../core/rings/RingKinds';
+import { SeededRandom } from '../core/util/SeededRandom';
+import { RenderLayers } from '../render/Stage3DRig';
 import { PhysicsStepper } from './PhysicsStepper';
 import { calcRingDimensions, Ring } from './Ring';
 
 const { ccclass } = _decorator;
 
-const ELLIPSE_SEGMENTS = 24;
-const tempForce = new Vec2();
+export interface SpawnRingPoseOptions {
+    z?: number;
+    pitchXDeg?: number;
+    yawYDeg?: number;
+    rollZDeg?: number;
+}
 
 /**
- * 圈管理与共享绘制层，挂在 TankRoot 下，原点位于缸坐标 (0, 0)。
- * 全场所有圈共用此节点上的唯一 Graphics 绘制。
+ * 3D 圈管理层，挂在 TankRoot 下：
+ * - 将每个 Ring 的 TorusBody3D 纳入 PhysicsStepper.world；
+ * - 每个物理步之前施加净下沉力；
+ * - 每帧末尾将三维刚体位置与四元数同步到 3D 圆环节点。
  */
 @ccclass('RingLayer')
 export class RingLayer extends Component {
-    private gfx!: Graphics;
+    tank3DRoot: Node | null = null;
+
     private stepper: PhysicsStepper | null = null;
     private rings: Ring[] = [];
+    private spawnRng = new SeededRandom(GameConst.defaultLevelSeed ^ 0x5f3759df);
 
-    static create(tankRoot: Node): RingLayer {
+    static create(tankRoot: Node, tank3DRoot: Node): RingLayer {
         const layerNode = new Node('Rings');
-        layerNode.layer = Layers.Enum.UI_2D;
+        layerNode.layer = RenderLayers.BG_2D;
 
         const transform = layerNode.addComponent(UITransform);
         transform.setContentSize(TankSpace.width, TankSpace.height);
@@ -34,12 +41,12 @@ export class RingLayer extends Component {
         layerNode.setPosition(0, 0, 0);
 
         const layer = layerNode.addComponent(RingLayer);
+        layer.tank3DRoot = tank3DRoot;
         tankRoot.addChild(layerNode);
         return layer;
     }
 
     onLoad(): void {
-        this.gfx = this.getComponent(Graphics) ?? this.addComponent(Graphics);
         this.stepper = this.node.parent?.getComponent(PhysicsStepper) ?? null;
     }
 
@@ -54,39 +61,52 @@ export class RingLayer extends Component {
         this.stepper?.offBeforeStep(this.onBeforeStep);
     }
 
-    /** 在缸坐标 (x, y) 生成一个圈，坐标会被安全限制在缸壁与圆弧底角内侧 */
-    spawn(tankX: number, tankY: number, spec: RingSpec, angleDeg = 0): Ring {
+    /**
+     * 在缸坐标 (x, y) 生成一个真 3D 正圆环。
+     * 未指定姿态时使用确定性种子赋予轻微随机前后纵深与三维微倾，落底自然形成立体斜靠堆叠。
+     */
+    spawn(tankX: number, tankY: number, spec: RingSpec, angleDeg = 0, pose?: SpawnRingPoseOptions): Ring {
         const dims = calcRingDimensions(spec);
-        const halfW = dims.outerDiameter / 2;
-        const halfH = dims.thickness / 2;
-        const marginX = halfW + 2;
-        const marginY = halfH + 2;
-        const clampedX = Math.min(Math.max(tankX, marginX), TankSpace.width - marginX);
-        let clampedY = Math.min(Math.max(tankY, marginY), TankSpace.height - marginY);
+        const geom = calcRingPillarGeometry(TankSpace.width);
+        const outerR = dims.outerDiameter * 0.5;
+        const margin = outerR + 2;
+
+        const clampedX = Math.min(Math.max(tankX, margin), TankSpace.width - margin);
+        let clampedY = Math.min(Math.max(tankY, dims.tubeRadius + 2), TankSpace.height - margin);
 
         const r = GameConst.tankCornerRadius;
         const safeR = Math.max(0, r - 2);
-        const cornerDx = Math.max(r - (clampedX - halfW), clampedX + halfW - (TankSpace.width - r));
+        const cornerDx = Math.max(r - (clampedX - outerR), clampedX + outerR - (TankSpace.width - r));
         if (cornerDx > 0 && cornerDx < r) {
             const minBottomY = r - Math.sqrt(Math.max(0, safeR * safeR - cornerDx * cornerDx));
-            clampedY = Math.max(clampedY, minBottomY + marginY);
+            clampedY = Math.max(clampedY, minBottomY + dims.tubeRadius + 4);
         }
 
-        const ring = Ring.createNode(spec, clampedX, clampedY, angleDeg);
+        const maxSafeZ = Math.max(4, geom.tankDepth * 0.5 - outerR - 2);
+        const z =
+            pose?.z !== undefined
+                ? Math.max(-maxSafeZ, Math.min(maxSafeZ, pose.z))
+                : this.spawnRng.range(-maxSafeZ * 0.75, maxSafeZ * 0.75);
+        const pitchXDeg = pose?.pitchXDeg ?? this.spawnRng.range(-24, 24);
+        const yawYDeg = pose?.yawYDeg ?? this.spawnRng.range(0, 360);
+        const rollZDeg = pose?.rollZDeg ?? (angleDeg !== 0 ? angleDeg : this.spawnRng.range(-18, 18));
+
+        const ring = Ring.createNode(spec, clampedX, clampedY, z, pitchXDeg, yawYDeg, rollZDeg, this.tank3DRoot);
         this.node.addChild(ring.node);
+        this.stepper?.world.addBody(ring.body3D);
         this.rings.push(ring);
         return ring;
     }
 
-    /** 清空所有圈 */
+    /** 清空所有圈与刚体 */
     clearAll(): void {
         for (const ring of this.rings) {
+            this.stepper?.world.removeBody(ring.body3D);
             if (ring.isValid) {
                 ring.node.destroy();
             }
         }
         this.rings.length = 0;
-        this.gfx.clear();
     }
 
     getRings(): readonly Ring[] {
@@ -106,14 +126,22 @@ export class RingLayer extends Component {
     }
 
     lateUpdate(): void {
-        this.redrawAll();
-    }
-
-    private onBeforeStep = (_dt: number): void => {
-        const scale = this.node.worldScale.x || 1;
         for (let i = this.rings.length - 1; i >= 0; i--) {
             const ring = this.rings[i];
             if (!ring.isValid) {
+                this.stepper?.world.removeBody(ring.body3D);
+                this.rings.splice(i, 1);
+                continue;
+            }
+            ring.syncVisualFromBody();
+        }
+    }
+
+    private onBeforeStep = (_dt: number): void => {
+        for (let i = this.rings.length - 1; i >= 0; i--) {
+            const ring = this.rings[i];
+            if (!ring.isValid) {
+                this.stepper?.world.removeBody(ring.body3D);
                 this.rings.splice(i, 1);
                 continue;
             }
@@ -121,107 +149,7 @@ export class RingLayer extends Component {
                 continue;
             }
             const accelPx = SolvedFeelConfig.baseSinkAccel * ring.kindConfig.sinkScale;
-            const mass = ring.body.getMass();
-            const fy = -(mass * accelPx * scale) / PHYSICS_2D_PTM_RATIO;
-            ring.body.applyForceToCenter(tempForce.set(0, fy), true);
+            ring.body3D.applyCentralForce(0, -ring.body3D.mass * accelPx, 0);
         }
     };
-
-    private redrawAll(): void {
-        const gfx = this.gfx;
-        gfx.clear();
-
-        for (let i = this.rings.length - 1; i >= 0; i--) {
-            const ring = this.rings[i];
-            if (!ring.isValid) {
-                this.rings.splice(i, 1);
-                continue;
-            }
-            this.drawRing(gfx, ring);
-        }
-    }
-
-    private drawRing(gfx: Graphics, ring: Ring): void {
-        const { outerDiameter, thickness } = ring.dimensions;
-        const cx = ring.node.position.x;
-        const cy = ring.node.position.y;
-        const rot = toRadian(ring.node.angle);
-        const cosR = Math.cos(rot);
-        const sinR = Math.sin(rot);
-
-        const rx = (outerDiameter - thickness) / 2;
-        const minor = Math.max(thickness, outerDiameter * Math.abs(Math.sin(toRadian(ring.flipDeg))));
-        const ry = Math.max(0, (minor - thickness) / 2);
-
-        const [mainColor, accentColor] = this.getRingColors(ring.spec);
-
-        if (ry < 1) {
-            const dx = cosR * rx;
-            const dy = sinR * rx;
-            gfx.lineCap = Graphics.LineCap.ROUND;
-            gfx.strokeColor = mainColor;
-            gfx.lineWidth = thickness;
-            gfx.moveTo(cx - dx, cy - dy);
-            gfx.lineTo(cx + dx, cy + dy);
-            gfx.stroke();
-
-            gfx.strokeColor = accentColor;
-            gfx.lineWidth = Math.max(2, thickness * 0.22);
-            gfx.moveTo(cx - dx * 0.85, cy - dy * 0.85);
-            gfx.lineTo(cx + dx * 0.85, cy + dy * 0.85);
-            gfx.stroke();
-            return;
-        }
-
-        gfx.lineJoin = Graphics.LineJoin.ROUND;
-        gfx.strokeColor = mainColor;
-        gfx.lineWidth = thickness;
-        this.traceRotatedEllipse(gfx, cx, cy, rx, ry, cosR, sinR);
-        gfx.stroke();
-
-        gfx.strokeColor = accentColor;
-        gfx.lineWidth = Math.max(2, thickness * 0.22);
-        this.traceRotatedEllipse(gfx, cx, cy, rx, ry, cosR, sinR);
-        gfx.stroke();
-    }
-
-    private traceRotatedEllipse(
-        gfx: Graphics,
-        cx: number,
-        cy: number,
-        rx: number,
-        ry: number,
-        cosR: number,
-        sinR: number,
-    ): void {
-        for (let i = 0; i < ELLIPSE_SEGMENTS; i++) {
-            const t = (i / ELLIPSE_SEGMENTS) * Math.PI * 2;
-            const lx = Math.cos(t) * rx;
-            const ly = Math.sin(t) * ry;
-            const wx = cx + lx * cosR - ly * sinR;
-            const wy = cy + lx * sinR + ly * cosR;
-            if (i === 0) {
-                gfx.moveTo(wx, wy);
-            } else {
-                gfx.lineTo(wx, wy);
-            }
-        }
-        gfx.close();
-    }
-
-    private getRingColors(spec: RingSpec): [Color, Color] {
-        switch (spec.kind) {
-            case 'gold':
-                return [Palette.ring.gold, Palette.ring.goldAccent];
-            case 'iron':
-                return [Palette.ring.iron, Palette.ring.ironAccent];
-            case 'wood':
-                return [Palette.ring.wood, Palette.ring.woodAccent];
-            case 'normal':
-            default: {
-                const c = spec.color ?? 'red';
-                return [Palette.ring[c], Palette.ring.highlight];
-            }
-        }
-    }
 }

@@ -35,9 +35,9 @@ export const FEEL_SLIDER_SPECS: readonly FeelSliderSpec[] = [
     { key: 'bladderRefillSec', label: '回充秒数', unit: '秒', min: 0.05, max: 0.8, step: 0.01, decimals: 2 },
     { key: 'circulationDecaySec', label: '环流衰减', unit: '秒', min: 0.5, max: 4.0, step: 0.05, decimals: 2 },
 
-    { key: 'pillarPosPct', label: '柱子位置', unit: '%', min: 22, max: 42, step: 0.5, decimals: 1 },
-    { key: 'pillarBottomPct', label: '柱底离底', unit: '%', min: 10, max: 45, step: 1, decimals: 0 },
-    { key: 'nozzlePosPct', label: '海眼位置', unit: '%', min: 10, max: 30, step: 0.5, decimals: 1 },
+    { key: 'pillarPosPct', label: '柱子位置', unit: '%', min: 18, max: 40, step: 0.5, decimals: 1 },
+    { key: 'pillarBottomPct', label: '柱底离底', unit: '%', min: 12, max: 45, step: 1, decimals: 0 },
+    { key: 'nozzlePosPct', label: '海眼位置', unit: '%', min: 8, max: 28, step: 0.5, decimals: 1 },
     { key: 'nozzleTiltDeg', label: '海眼内倾', unit: '°', min: 0, max: 25, step: 1, decimals: 0 },
     { key: 'tumbleSensitivity', label: '翻滚灵敏度', unit: '', min: 0, max: 1, step: 0.05, decimals: 2 },
     { key: 'funnelTolerance', label: '入柱宽容', unit: '', min: 0, max: 1, step: 0.05, decimals: 2 },

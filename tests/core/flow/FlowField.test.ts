@@ -9,13 +9,13 @@ function speedOf(v: FlowVec2): number {
 }
 
 describe('FlowField 水流速度场（T006）', () => {
-    it('海眼位于缸宽 17% 与 83%，向内倾 10°，左右严格镜像对称', () => {
+    it('海眼位于缸宽 14% 与 86%，向内倾 10°，左右严格镜像对称', () => {
         const field = new FlowField({ seed: 42, turbulenceScale: 0 });
         const leftPose = field.jet.getNozzlePose('left');
         const rightPose = field.jet.getNozzlePose('right');
 
-        expect(leftPose.x).toBeCloseTo(TankSpace.pctToPxX(17), 5);
-        expect(rightPose.x).toBeCloseTo(TankSpace.pctToPxX(83), 5);
+        expect(leftPose.x).toBeCloseTo(TankSpace.pctToPxX(FeelConfig.nozzlePosPct), 5);
+        expect(rightPose.x).toBeCloseTo(TankSpace.pctToPxX(100 - FeelConfig.nozzlePosPct), 5);
         expect(leftPose.y).toBe(0);
         expect(rightPose.y).toBe(0);
 

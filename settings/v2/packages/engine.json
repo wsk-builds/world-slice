@@ -58,7 +58,7 @@
           },
           "physics": {
             "_value": false,
-            "_option": "physics-ammo"
+            "_option": "physics-cannon"
           },
           "physics-ammo": {
             "_value": false,
@@ -79,7 +79,7 @@
             "_value": false
           },
           "physics-2d": {
-            "_value": true,
+            "_value": false,
             "_option": "physics-2d-box2d"
           },
           "physics-2d-box2d": {
@@ -204,7 +204,6 @@
           "intersection-2d",
           "mask",
           "particle-2d",
-          "physics-2d-box2d",
           "primitive",
           "profiler",
           "rich-text",

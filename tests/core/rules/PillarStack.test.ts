@@ -63,27 +63,30 @@ describe('PillarStack', () => {
         expect(stack.isEmpty()).toBe(true);
     });
 
-    it('calcSlotCenterY 精确对齐 6 个普通圈到柱尖并支持混叠小金环', () => {
+    it('calcSlotCenterY 按微倾层高系数精确对齐 6 个普通圈到柱尖并支持混叠小金环', () => {
         const geom = calcRingPillarGeometry(TankSpace.width);
-        const baseTopY = 165.5;
+        const baseTopY = 244;
         const tipY = baseTopY + geom.pillarHeight;
+        const pitch = GameConst.pillarSlotPitchScale;
         const thicknesses: number[] = [];
 
         for (let i = 0; i < GameConst.pillarCapacity; i++) {
-            const centerY = calcSlotCenterY(baseTopY, thicknesses, geom.ringThickness);
-            expect(centerY).toBeCloseTo(baseTopY + (i + 0.5) * geom.ringThickness, 6);
+            const centerY = calcSlotCenterY(baseTopY, thicknesses, geom.ringThickness, i, pitch);
+            expect(centerY).toBeCloseTo(baseTopY + (i + 0.5) * geom.ringThickness * pitch, 6);
             expect(centerY).toBeLessThan(tipY);
             thicknesses.push(geom.ringThickness);
         }
 
-        // 第 6 个圈顶边刚好对齐柱尖
-        const topEdge = calcSlotCenterY(baseTopY, thicknesses.slice(0, 5), geom.ringThickness) + geom.ringThickness / 2;
+        // 第 6 个圈层顶边刚好对齐柱尖
+        const topEdge =
+            calcSlotCenterY(baseTopY, thicknesses.slice(0, 5), geom.ringThickness, 5, pitch) +
+            (geom.ringThickness * pitch) / 2;
         expect(topEdge).toBeCloseTo(tipY, 6);
 
-        // 混叠小金环（16px）+ 普通圈（20px）紧密贴合无间隙
+        // 混叠小金环 + 普通圈按同比例对齐
         const goldThick = geom.ringThickness * 0.8;
-        expect(calcSlotCenterY(baseTopY, [goldThick], geom.ringThickness)).toBeCloseTo(
-            baseTopY + goldThick + geom.ringThickness / 2,
+        expect(calcSlotCenterY(baseTopY, [goldThick], geom.ringThickness, 1, pitch)).toBeCloseTo(
+            baseTopY + goldThick * pitch + (geom.ringThickness * pitch) / 2,
             6,
         );
     });

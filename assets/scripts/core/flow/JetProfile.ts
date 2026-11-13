@@ -50,7 +50,7 @@ export function buildJetConeGeometry(params: JetConeParams): JetConeGeometry {
 
     const geom = calcRingPillarGeometry(params.tankWidth);
     const pillarBottomY = (params.pillarBottomPct / 100) * params.tankHeight;
-    const pillarTipY = Math.max(40, pillarBottomY + geom.pillarBaseHeight + geom.pillarHeight);
+    const pillarTipY = Math.max(40, pillarBottomY + geom.pillarTotalHeight);
 
     return {
         leftNozzle: { x: leftX, y: 0, axisX: sinT, axisY: cosT },

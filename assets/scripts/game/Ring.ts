@@ -1,178 +1,186 @@
-import {
-    _decorator, BoxCollider2D, CircleCollider2D, Component, ERigidBody2DType, Layers, Node, RigidBody2D, Size,
-    toRadian, UITransform, Vec2,
-} from 'cc';
+import { _decorator, Component, MeshRenderer, Node, Quat, UITransform } from 'cc';
 import { calcRingPillarGeometry } from '../config/GameConst';
-import { PhysicsGroupBit } from '../config/PhysicsGroups';
 import { TankSpace } from '../config/TankSpace';
 import { SolvedFeelConfig } from '../core/flow/FeelSolver';
+import { quatFromEulerDeg, QuatLike } from '../core/physics3d/Math3D';
+import { TorusBody3D } from '../core/physics3d/TorusBody3D';
 import { getRingKindConfig, RingKindConfig, RingSpec } from '../core/rings/RingKinds';
+import { bindRendererMaterial, getOrCreateRingMaterial, getOrCreateTorusMesh } from '../render/MeshFactory3D';
+import { RenderLayers, Stage3DRig } from '../render/Stage3DRig';
 
 const { ccclass } = _decorator;
 
-const DEFAULT_FLIP_DEG = 22;
-const tempLocal = new Vec2();
+const tempQuatLike: QuatLike = { x: 0, y: 0, z: 0, w: 1 };
+const tempCcQuat = new Quat();
 
 export interface RingDimensions {
     outerDiameter: number;
     thickness: number;
+    innerDiameter: number;
+    majorRadius: number;
+    tubeRadius: number;
+    innerRadius: number;
     endRadius: number;
     endOffset: number;
 }
 
-/** 根据缸宽与圈种计算实际外径、管粗和端点圆心偏移 */
+/** 根据缸宽与圈种计算真 3D 正圆环外径、管粗、主半径与内孔尺寸 */
 export function calcRingDimensions(spec: RingSpec): RingDimensions {
     const base = calcRingPillarGeometry(TankSpace.width);
     const kindCfg = getRingKindConfig(spec);
     const outerDiameter = base.ringOuterDiameter * kindCfg.sizeScale;
     const thickness = base.ringThickness * kindCfg.sizeScale;
-    const endRadius = thickness / 2;
-    const endOffset = outerDiameter / 2 - endRadius;
-    return { outerDiameter, thickness, endRadius, endOffset };
+    const innerDiameter = Math.max(4, outerDiameter - thickness * 2);
+    const tubeRadius = thickness * 0.5;
+    const majorRadius = outerDiameter * 0.5 - tubeRadius;
+    const innerRadius = innerDiameter * 0.5;
+    return {
+        outerDiameter,
+        thickness,
+        innerDiameter,
+        majorRadius,
+        tubeRadius,
+        innerRadius,
+        endRadius: tubeRadius,
+        endOffset: majorRadius,
+    };
 }
 
 /**
- * 锁脉环（圈）物理体组件（GDD §3.2、§3.4、§4.1）。
- * 结构：1 个开启 bullet 的动态刚体 + 2 个端点小圆（RING_END）+ 1 根横贯细条（RING_BAR）。
- * 所有圈共用父容器 RingLayer 上的同一个 Graphics 绘制。
+ * 锁脉环（真 3D 正圆环）组件：
+ * - 物理：由纯逻辑三维圆环刚体 `TorusBody3D` 驱动，支持三轴自由翻转与前后斜靠堆叠；
+ * - 渲染：在 `Stage3DRig.tank3DRoot` 下挂载标准正圆环 `Torus` 3D 网格，正面朝向镜头时为 100% 标准正圆。
  */
 @ccclass('Ring')
 export class Ring extends Component {
     spec: RingSpec = { kind: 'normal', color: 'red' };
     kindConfig: RingKindConfig = getRingKindConfig('normal');
-    body!: RigidBody2D;
+    body3D!: TorusBody3D;
+    view3DNode: Node | null = null;
 
-    /** 是否已锁定在柱上（T012 使用）；锁定后跳过净下沉力 */
+    /** 是否已锁定在柱上（T012 使用）；锁定后切换为静态并保留自然微倾 */
     locked = false;
-    /** 视觉倾角（度），决定灰盒扁椭圆的短轴与后续 3D 侧翻角 */
-    flipDeg = DEFAULT_FLIP_DEG;
 
     private dims: RingDimensions = calcRingDimensions({ kind: 'normal', color: 'red' });
-    private leftEnd!: CircleCollider2D;
-    private rightEnd!: CircleCollider2D;
-    private centerBar!: BoxCollider2D;
-    private initialized = false;
+    private meshRenderer: MeshRenderer | null = null;
 
     get dimensions(): RingDimensions {
         return this.dims;
     }
 
-    /** 底层 Box2D 刚体是否已完成创建（防止物理步内动态生成节点在次子步访问未就绪刚体） */
     get isBodyReady(): boolean {
-        return Boolean((this.body?.impl as { impl?: unknown } | null)?.impl);
+        return Boolean(this.body3D);
     }
 
-    /**
-     * 在挂入父节点前创建并配好节点与物理组件，确保 RigidBody2D.bullet 等仅在初始化时读取的属性生效。
-     */
-    static createNode(spec: RingSpec, x: number, y: number, angleDeg = 0): Ring {
+    static createNode(
+        spec: RingSpec,
+        x: number,
+        y: number,
+        z: number,
+        pitchXDeg: number,
+        yawYDeg: number,
+        rollZDeg: number,
+        tank3DRoot: Node | null,
+    ): Ring {
         const ringNode = new Node(`Ring_${spec.kind}_${spec.color ?? 'special'}`);
-        ringNode.layer = Layers.Enum.UI_2D;
+        ringNode.layer = RenderLayers.BG_2D;
         ringNode.setPosition(x, y, 0);
-        ringNode.angle = angleDeg;
 
         const ring = ringNode.addComponent(Ring);
         ring.spec = { kind: spec.kind, color: spec.color };
-        ring.setupPhysics();
+        ring.initBodyAndView(x, y, z, pitchXDeg, yawYDeg, rollZDeg, tank3DRoot);
         return ring;
     }
 
-    onLoad(): void {
-        if (!this.initialized) {
-            this.setupPhysics();
-        }
-    }
-
-    private setupPhysics(): void {
-        if (this.initialized) {
-            return;
-        }
-        this.initialized = true;
+    private initBodyAndView(
+        x: number,
+        y: number,
+        z: number,
+        pitchXDeg: number,
+        yawYDeg: number,
+        rollZDeg: number,
+        tank3DRoot: Node | null,
+    ): void {
         this.kindConfig = getRingKindConfig(this.spec);
         this.dims = calcRingDimensions(this.spec);
 
         const transform = this.getComponent(UITransform) ?? this.addComponent(UITransform);
         transform.setAnchorPoint(0.5, 0.5);
-        transform.setContentSize(this.dims.outerDiameter, this.dims.thickness);
+        transform.setContentSize(this.dims.outerDiameter, this.dims.outerDiameter);
 
-        const body = this.getComponent(RigidBody2D) ?? this.addComponent(RigidBody2D);
-        body.type = ERigidBody2DType.Dynamic;
-        body.bullet = true;
-        body.gravityScale = 0;
-        body.group = PhysicsGroupBit.RING_BAR;
-        this.body = body;
+        quatFromEulerDeg(pitchXDeg, yawYDeg, rollZDeg, tempQuatLike);
 
-        this.leftEnd = this.addComponent(CircleCollider2D);
-        this.leftEnd.group = PhysicsGroupBit.RING_END;
-        this.leftEnd.density = 0.5;
-        this.leftEnd.friction = 0.15;
-        this.leftEnd.restitution = 0.05;
+        this.body3D = new TorusBody3D({
+            x,
+            y,
+            z,
+            qx: tempQuatLike.x,
+            qy: tempQuatLike.y,
+            qz: tempQuatLike.z,
+            qw: tempQuatLike.w,
+            majorRadius: this.dims.majorRadius,
+            tubeRadius: this.dims.tubeRadius,
+            mass: Math.max(0.25, this.kindConfig.sinkScale),
+            linearDamping: SolvedFeelConfig.ringLinearDamping,
+            angularDamping: SolvedFeelConfig.ringAngularDamping,
+            friction: SolvedFeelConfig.ringFriction,
+            restitution: SolvedFeelConfig.ringRestitution,
+            type: 'dynamic',
+        });
 
-        this.rightEnd = this.addComponent(CircleCollider2D);
-        this.rightEnd.group = PhysicsGroupBit.RING_END;
-        this.rightEnd.density = 0.5;
-        this.rightEnd.friction = 0.15;
-        this.rightEnd.restitution = 0.05;
+        if (tank3DRoot) {
+            const vNode = new Node(`${this.node.name}_3D`);
+            vNode.layer = RenderLayers.RING_PILLAR_3D;
+            tank3DRoot.addChild(vNode);
+            this.view3DNode = vNode;
 
-        this.centerBar = this.addComponent(BoxCollider2D);
-        this.centerBar.group = PhysicsGroupBit.RING_BAR;
-        this.centerBar.density = 1.0;
+            const mr = vNode.addComponent(MeshRenderer);
+            mr.mesh = getOrCreateTorusMesh(this.dims.majorRadius, this.dims.tubeRadius);
+            bindRendererMaterial(
+                () => getOrCreateRingMaterial(this.spec),
+                (m) => {
+                    if (mr.isValid) mr.material = m;
+                },
+            );
+            this.meshRenderer = mr;
+        }
 
-        this.applyConfig();
+        this.syncVisualFromBody();
     }
 
-    /** 同步 FeelSolver 换算后的阻尼/摩擦与碰撞体几何尺寸 */
+    /** 同步 FeelSolver 换算后的阻尼/摩擦与几何尺寸 */
     applyConfig(): void {
         this.kindConfig = getRingKindConfig(this.spec);
         this.dims = calcRingDimensions(this.spec);
 
-        this.body.linearDamping = SolvedFeelConfig.ringLinearDamping;
-        this.body.angularDamping = SolvedFeelConfig.ringAngularDamping;
+        this.body3D.setDimensions(this.dims.majorRadius, this.dims.tubeRadius);
+        this.body3D.linearDamping = SolvedFeelConfig.ringLinearDamping;
+        this.body3D.angularDamping = SolvedFeelConfig.ringAngularDamping;
+        this.body3D.friction = SolvedFeelConfig.ringFriction;
+        this.body3D.restitution = SolvedFeelConfig.ringRestitution;
 
-        const transform = this.getComponent(UITransform);
-        transform?.setContentSize(this.dims.outerDiameter, this.dims.thickness);
-
-        this.leftEnd.radius = this.dims.endRadius;
-        this.leftEnd.offset = new Vec2(-this.dims.endOffset, 0);
-        this.leftEnd.apply();
-
-        this.rightEnd.radius = this.dims.endRadius;
-        this.rightEnd.offset = new Vec2(this.dims.endOffset, 0);
-        this.rightEnd.apply();
-
-        this.centerBar.offset = new Vec2(0, 0);
-        this.centerBar.size = new Size(this.dims.outerDiameter, this.dims.thickness);
-        this.centerBar.friction = SolvedFeelConfig.ringFriction;
-        this.centerBar.restitution = SolvedFeelConfig.ringRestitution;
-        this.centerBar.apply();
-    }
-
-    /** 获取两个端点圆心在物理世界坐标系下的位置（乘以世界缩放以对齐 Box2D 夹具实际圆心） */
-    getWorldEnds(outLeft: Vec2, outRight: Vec2): void {
-        const sx = Math.abs(this.node.worldScale.x) || 1;
-        const scaledOffset = this.dims.endOffset * sx;
-        this.body.getWorldPoint(tempLocal.set(-scaledOffset, 0), outLeft);
-        this.body.getWorldPoint(tempLocal.set(scaledOffset, 0), outRight);
-    }
-
-    /** 获取两个端点圆心在缸坐标系下的实时位置（多子步物理期间直接从刚体换算） */
-    getTankEnds(outLeft: Vec2, outRight: Vec2): void {
-        const parent = this.node.parent;
-        if (this.isBodyReady && parent) {
-            this.getWorldEnds(outLeft, outRight);
-            const origin = parent.worldPosition;
-            const sx = parent.worldScale.x || 1;
-            const sy = parent.worldScale.y || 1;
-            outLeft.set((outLeft.x - origin.x) / sx, (outLeft.y - origin.y) / sy);
-            outRight.set((outRight.x - origin.x) / sx, (outRight.y - origin.y) / sy);
-            return;
+        if (this.meshRenderer) {
+            this.meshRenderer.mesh = getOrCreateTorusMesh(this.dims.majorRadius, this.dims.tubeRadius);
+            this.meshRenderer.material = getOrCreateRingMaterial(this.spec);
         }
-        const rad = toRadian(this.node.angle);
-        const dx = Math.cos(rad) * this.dims.endOffset;
-        const dy = Math.sin(rad) * this.dims.endOffset;
-        const cx = this.node.position.x;
-        const cy = this.node.position.y;
-        outLeft.set(cx - dx, cy - dy);
-        outRight.set(cx + dx, cy + dy);
+        this.syncVisualFromBody();
+    }
+
+    /** 将 3D 物理刚体的位置与四元数同步到 2D 锚点节点与 3D 渲染节点 */
+    syncVisualFromBody(): void {
+        const b = this.body3D;
+        this.node.setPosition(b.x, b.y, 0);
+        if (this.view3DNode && this.view3DNode.isValid) {
+            this.view3DNode.setPosition(Stage3DRig.pxTo3D(b.x), Stage3DRig.pxTo3D(b.y), Stage3DRig.pxTo3D(b.z));
+            tempCcQuat.set(b.quat.x, b.quat.y, b.quat.z, b.quat.w);
+            this.view3DNode.setRotation(tempCcQuat);
+        }
+    }
+
+    onDestroy(): void {
+        if (this.view3DNode && this.view3DNode.isValid) {
+            this.view3DNode.destroy();
+            this.view3DNode = null;
+        }
     }
 }

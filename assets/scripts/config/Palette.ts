@@ -60,10 +60,10 @@ export const Palette = {
     bubbleFill: hex('#D8F6FF', 0.52),
     bubbleHighlight: hex('#FFFFFF', 0.78),
 
-    /** 灰盒悬空柱与底托 */
-    pillarRodFill: hex('#DCE4EC'),
-    pillarBaseFill: hex('#9FB3C8'),
-    pillarBorder: hex('#F4F8FB'),
+    /** 悬空三段式锥形十字玉柱配色（青碧玉色，贴合参考视频立体柱感与东海玉柱设定） */
+    pillarRodFill: hex('#3CA389'),
+    pillarBaseFill: hex('#2C826C'),
+    pillarBorder: hex('#8EE6CE'),
 
     /** 灰盒七种锁脉环配色 */
     ring: {

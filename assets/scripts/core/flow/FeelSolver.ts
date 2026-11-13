@@ -1,5 +1,5 @@
 import { DEFAULT_FEEL_CONFIG, FEEL_BASE_CONST, FeelConfig, FeelParams } from '../../config/FeelConfig';
-import { calcRingPillarGeometry, GameConst } from '../../config/GameConst';
+import { calcRingPillarGeometry } from '../../config/GameConst';
 import { TankSpace } from '../../config/TankSpace';
 import { Bladder } from '../input/Bladder';
 import { getRingKindConfig } from '../rings/RingKinds';
@@ -49,11 +49,15 @@ export interface SolvedFeel {
     jetMaxSpeed: number;
     /** 圈的线性阻尼（1/秒） */
     ringLinearDamping: number;
-    /** 圈的角阻尼（1/秒，由翻滚灵敏度换算） */
+    /** 圈的三维角阻尼（1/秒，由翻滚灵敏度换算） */
     ringAngularDamping: number;
-    /** 双端点差分翻滚力矩倍率（0.5 时为 1.0，不改变净平移推力） */
+    /** 环周采样点差分翻滚力矩倍率（0.5 时为 1.0，不改变净平移推力） */
     tumbleTorqueScale: number;
-    /** 圈横条碰撞摩擦系数 */
+    /** 纵深 Z 方向三维翻转涡流速度（像素/秒，由翻滚灵敏度缩放） */
+    zSwirlSpeed: number;
+    /** 喷流上升期间向 z=0 柱位平面的柔和回中率（1/秒） */
+    zCenteringRate: number;
+    /** 圈碰撞摩擦系数 */
     ringFriction: number;
     /** 圈碰撞弹性系数 */
     ringRestitution: number;
@@ -80,6 +84,7 @@ const tempAccel = { x: 0, y: 0 };
 
 /**
  * 一维竖直下沉小模拟：普通圈从水面释放，计算落到缸底所需时间（秒）。
+ * 指数阻尼衰减与 TorusWorld3D 子步严格一致。
  */
 export function simulateSink1D(
     baseSinkAccel: number,
@@ -87,13 +92,15 @@ export function simulateSink1D(
     linearDamping: number = FEEL_BASE_CONST.ringLinearDamping,
     tankHeight = TankSpace.height,
     dt = FIXED_SIM_DT,
+    tankWidth = TankSpace.width,
 ): number {
-    const halfThick = GameConst.ringThickness / 2;
+    const geom = calcRingPillarGeometry(tankWidth);
+    const halfThick = geom.ringThickness / 2;
     let y = tankHeight - (halfThick + 2);
     const floorY = halfThick;
     let vy = 0;
     let t = 0;
-    const linDecay = 1 / (1 + dt * linearDamping);
+    const linDecay = Math.exp(-linearDamping * dt);
     const normalFollow = getRingKindConfig('normal').flowFollow;
 
     while (y > floorY && t < 20) {
@@ -107,7 +114,8 @@ export function simulateSink1D(
 }
 
 /**
- * 一维竖直推升小模拟：海眼上方缸底普通圈在指定按压时长下的最高升程（占缸高百分比 0–100）。
+ * 一维竖直推升小模拟：海眼上方缸底普通正圆环在指定按压时长下的最高升程（占缸高百分比 0–100）。
+ * 采样三维圆环四方位（左、右、前、后）的水速均值，对齐 WaterForce 实际施力。
  */
 export function simulateLift1D(
     pressSec: number,
@@ -123,7 +131,7 @@ export function simulateLift1D(
 ): number {
     const geom = calcRingPillarGeometry(tankWidth);
     const halfThick = geom.ringThickness / 2;
-    const endOffset = geom.ringOuterDiameter / 2 - halfThick;
+    const majorR = geom.ringOuterDiameter / 2 - halfThick;
     const floorY = halfThick;
     const ceilingY = tankHeight - (halfThick + 2);
 
@@ -148,7 +156,7 @@ export function simulateLift1D(
     );
     const normalKind = getRingKindConfig('normal');
     const afterglowDecay = Math.exp((-LN20 * dt) / FEEL_BASE_CONST.jetAfterglowSec);
-    const linDecay = 1 / (1 + dt * linearDamping);
+    const linDecay = Math.exp(-linearDamping * dt);
 
     let y = halfThick + 2;
     let vy = 0;
@@ -165,11 +173,14 @@ export function simulateLift1D(
         bladder.step(dt);
 
         const cx = nozzle.x + y * tanTilt;
-        sampleSingleNozzleVelocity(nozzle, cone, jetMaxSpeed, level, cx - endOffset, y, tempVel);
+        sampleSingleNozzleVelocity(nozzle, cone, jetMaxSpeed, level, cx - majorR, y, tempVel);
         const wyLeft = tempVel.y;
-        sampleSingleNozzleVelocity(nozzle, cone, jetMaxSpeed, level, cx + endOffset, y, tempVel);
+        sampleSingleNozzleVelocity(nozzle, cone, jetMaxSpeed, level, cx + majorR, y, tempVel);
         const wyRight = tempVel.y;
-        const wy = 0.5 * (wyLeft + wyRight);
+        sampleSingleNozzleVelocity(nozzle, cone, jetMaxSpeed, level, cx, y, tempVel);
+        const wyCenter = tempVel.y;
+        // 水平正圆环四方位（左、右、前、后）平均竖直水速
+        const wy = 0.25 * (wyLeft + wyRight + 2 * wyCenter);
 
         calcEndpointFollowAccel(0, wy, 0, vy, flowFollowRate, normalKind.flowFollow, tempAccel);
         const ay = tempAccel.y - baseSinkAccel * normalKind.sinkScale;
@@ -277,13 +288,18 @@ function solveInnerForFollowRate(
     return { baseSinkAccel, jetMaxSpeed, tapPct, holdPct, sinkSec };
 }
 
-function solveTumbleParams(tumbleSensitivity: number): { ringAngularDamping: number; tumbleTorqueScale: number } {
+function solveTumbleParams(tumbleSensitivity: number): {
+    ringAngularDamping: number;
+    tumbleTorqueScale: number;
+    zSwirlSpeed: number;
+} {
     const t = clamp01(tumbleSensitivity);
-    // t=0 -> 12.0（极稳）、t=0.5 -> 4.0（默认对齐 T008）、t=1 -> 1.33（灵敏翻滚）
-    const ringAngularDamping = 12 * Math.exp(-2.197224577 * t);
-    // t=0.5 时保持 1.0，不改变纯双端点施力比例
+    // t=0 -> 10.5（极稳）、t=0.5 -> 3.3（自然三维翻转）、t=1 -> 1.05（灵动连续空翻）
+    const ringAngularDamping = 10.5 * Math.exp(-2.31 * t);
+    // t=0.5 时保持 1.0，不改变净平移推力
     const tumbleTorqueScale = 0.35 + 1.3 * t;
-    return { ringAngularDamping, tumbleTorqueScale };
+    const zSwirlSpeed = FEEL_BASE_CONST.zSwirlSpeed * (0.25 + 1.5 * t);
+    return { ringAngularDamping, tumbleTorqueScale, zSwirlSpeed };
 }
 
 function solveFunnelParams(funnelTolerance: number): SolvedFunnelParams {
@@ -292,7 +308,7 @@ function solveFunnelParams(funnelTolerance: number): SolvedFunnelParams {
         return { radiusPx: 0, maxAngleDeg: 0, pullAccel: 0, alignRate: 0 };
     }
     const geom = calcRingPillarGeometry(TankSpace.width);
-    const baseRadius = geom.ringOuterDiameter * 0.55;
+    const baseRadius = geom.ringOuterDiameter * 0.6;
     if (t <= 0.5) {
         const k = t / 0.5;
         return {
@@ -349,6 +365,8 @@ export function solveFeel(feel: Readonly<FeelParams> = FeelConfig): SolvedFeel {
         ringLinearDamping: FEEL_BASE_CONST.ringLinearDamping,
         ringAngularDamping: tumble.ringAngularDamping,
         tumbleTorqueScale: tumble.tumbleTorqueScale,
+        zSwirlSpeed: tumble.zSwirlSpeed,
+        zCenteringRate: FEEL_BASE_CONST.zCenteringRate,
         ringFriction: FEEL_BASE_CONST.ringFriction,
         ringRestitution: FEEL_BASE_CONST.ringRestitution,
         jetAfterglowSec: FEEL_BASE_CONST.jetAfterglowSec,
@@ -372,6 +390,8 @@ function copySolvedFeel(src: Readonly<SolvedFeel>, dst: SolvedFeel): void {
     dst.ringLinearDamping = src.ringLinearDamping;
     dst.ringAngularDamping = src.ringAngularDamping;
     dst.tumbleTorqueScale = src.tumbleTorqueScale;
+    dst.zSwirlSpeed = src.zSwirlSpeed;
+    dst.zCenteringRate = src.zCenteringRate;
     dst.ringFriction = src.ringFriction;
     dst.ringRestitution = src.ringRestitution;
     dst.jetAfterglowSec = src.jetAfterglowSec;
