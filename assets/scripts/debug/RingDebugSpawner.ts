@@ -1,7 +1,7 @@
 import { _decorator, Component, EventKeyboard, EventTouch, Input, input, KeyCode, Node, UITransform, Vec3 } from 'cc';
 import { GameConst } from '../config/GameConst';
 import { DEBUG_RING_SLOTS, ringSpecLabel, RingSpec } from '../core/rings/RingKinds';
-import { RingLayer } from '../game/Ring';
+import { RingLayer } from '../game/RingLayer';
 
 const { ccclass } = _decorator;
 

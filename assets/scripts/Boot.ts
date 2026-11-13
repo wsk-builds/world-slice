@@ -6,7 +6,7 @@ import { PhysicsDebugDraw } from './debug/PhysicsDebugDraw';
 import { RingDebugSpawner } from './debug/RingDebugSpawner';
 import { PhysicsStepper } from './game/PhysicsStepper';
 import { Pillar } from './game/Pillar';
-import { RingLayer } from './game/Ring';
+import { RingLayer } from './game/RingLayer';
 import { Tank } from './game/Tank';
 import { ShellView } from './ui/ShellView';
 
@@ -32,6 +32,7 @@ export class Boot extends Component {
         machineTransform.setAnchorPoint(0.5, 0.5);
         this.node.addChild(machine);
         this.machineNode = machine;
+        this.fitMachine();
 
         // 内屏节点（原点在机身内屏左下角），位于外壳之下
         const tankRoot = this.createTankRoot(machine);

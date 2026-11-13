@@ -1,6 +1,8 @@
-import { Color, Component, Graphics, Label, Layers, Node, UITransform } from 'cc';
+import { _decorator, Color, Component, Graphics, Label, Layers, Node, UITransform } from 'cc';
 import { LayoutConfig, LayoutRect, rectCenter } from '../config/LayoutConfig';
 import { Palette } from '../config/Palette';
+
+const { ccclass } = _decorator;
 
 interface ZoneSpec {
     rect: LayoutRect;
@@ -16,6 +18,7 @@ interface ZoneSpec {
  * 灰盒掌机外壳视图。
  * 使用单个共享 Graphics 绘制挖空内屏的外壳与全部分区占位框，位于内屏内容之上。
  */
+@ccclass('ShellView')
 export class ShellView extends Component {
     /** 创建挂有 ShellView 的节点，原点在机身左下角（设计坐标 0..1624, 0..750）。 */
     static create(parent: Node): ShellView {

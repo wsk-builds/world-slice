@@ -51,6 +51,7 @@ export class Tank extends Component {
             box.size = new Size(rect.width, rect.height);
             box.friction = 0.05;
             box.restitution = 0.1;
+            box.apply();
         }
 
         for (const strip of geom.cornerStrips) {
@@ -59,6 +60,7 @@ export class Tank extends Component {
             poly.points = strip.map((p) => new Vec2(p.x, p.y));
             poly.friction = 0.02;
             poly.restitution = 0.1;
+            poly.apply();
         }
     }
 
