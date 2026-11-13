@@ -34,6 +34,18 @@ export const GameConst = {
 
     /** 底角折线外推厚度（像素），确保每段为严格凸四边形 */
     tankCornerStripThickness: 14,
+
+    /** 海眼喷口初始半宽（像素，对应 GDD 附录海眼 80×40） */
+    jetMouthHalfWidth: 32,
+
+    /** 主喷流下窄上宽锥形半张角（度） */
+    jetHalfAngleDeg: 14,
+
+    /** 水体涡流扰动的空间特征尺度（像素） */
+    turbulenceSpatialScale: 180,
+
+    /** 水体涡流扰动随时间演化的频率（1/秒） */
+    turbulenceTimeRate: 0.45,
 } as const;
 
 export interface RingPillarGeometry {

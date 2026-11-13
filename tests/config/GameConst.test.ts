@@ -29,4 +29,17 @@ describe('GameConst & FeelConfig', () => {
         expect(leftX - geom.pillarBaseWidth / 2).toBeGreaterThan(GameConst.tankCornerRadius);
         expect(TankSpace.pctToPxY(FeelConfig.pillarBottomPct)).toBeGreaterThan(geom.ringOuterDiameter);
     });
+
+    it('海眼位置左右对称，位于圆弧底角内侧且在悬空柱外侧', () => {
+        expect(FeelConfig.nozzlePosPct).toBe(17);
+        expect(FeelConfig.nozzleTiltDeg).toBe(10);
+
+        const leftNozzleX = TankSpace.pctToPxX(FeelConfig.nozzlePosPct);
+        const rightNozzleX = TankSpace.pctToPxX(100 - FeelConfig.nozzlePosPct);
+        const leftPillarX = TankSpace.pctToPxX(FeelConfig.pillarPosPct);
+
+        expect(leftNozzleX + rightNozzleX).toBeCloseTo(TankSpace.width, 5);
+        expect(leftNozzleX - GameConst.jetMouthHalfWidth).toBeGreaterThan(GameConst.tankCornerRadius);
+        expect(leftNozzleX).toBeLessThan(leftPillarX);
+    });
 });
