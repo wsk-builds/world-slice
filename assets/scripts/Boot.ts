@@ -7,6 +7,7 @@ import { Bladder } from './core/input/Bladder';
 import { PhysicsDebugDraw } from './debug/PhysicsDebugDraw';
 import { RingDebugSpawner } from './debug/RingDebugSpawner';
 import { TuningPanel } from './debug/TuningPanel';
+import { Funnel } from './game/Funnel';
 import { PhysicsStepper } from './game/PhysicsStepper';
 import { Pillar } from './game/Pillar';
 import { RingLayer } from './game/RingLayer';
@@ -56,6 +57,7 @@ export class Boot extends Component {
         const ringLayer = RingLayer.create(tankRoot, stageRig.tank3DRoot);
         const waterForce = WaterForce.attach(tankRoot, flowField, leftBladder, rightBladder, ringLayer);
         const scoreJudge = ScoreJudge.attach(tankRoot, leftPillar, rightPillar, ringLayer);
+        Funnel.attach(tankRoot, leftPillar, rightPillar, ringLayer, scoreJudge);
         const ringSpawner = tankRoot.addComponent(RingDebugSpawner);
         ringSpawner.ringLayer = ringLayer;
         ringSpawner.scoreJudge = scoreJudge;
