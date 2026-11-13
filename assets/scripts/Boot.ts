@@ -7,6 +7,7 @@ import { Bladder } from './core/input/Bladder';
 import { LevelState } from './core/level/LevelState';
 import { PhysicsDebugDraw } from './debug/PhysicsDebugDraw';
 import { HotZoneDebugDraw } from './debug/HotZoneDebugDraw';
+import { LevelEditor, LevelEditorExitInfo } from './debug/LevelEditor';
 import { RingDebugSpawner } from './debug/RingDebugSpawner';
 import { TuningPanel } from './debug/TuningPanel';
 import { Funnel } from './game/Funnel';
@@ -66,6 +67,10 @@ export class Boot extends Component implements LevelSessionHost {
     private sfx: Sfx | null = null;
     private leftBladder: Bladder | null = null;
     private rightBladder: Bladder | null = null;
+    private ringSpawner: RingDebugSpawner | null = null;
+    private tuningPanel: TuningPanel | null = null;
+    private levelEditor: LevelEditor | null = null;
+    private editorActive = false;
     private lastCountdownTickSec = -1;
 
     private currentLevelOptions: LevelBootSessionOptions = {
@@ -170,6 +175,7 @@ export class Boot extends Component implements LevelSessionHost {
         this.calmSeaSkill = calmSeaSkill;
         this.tappable = tappable;
         this.glassTap = glassTap;
+        this.ringSpawner = ringSpawner;
 
         stepper.onAfterStep(this.onAfterPhysicsStep);
         this.unsubCollision = stepper.world.onCollision((event) => {
@@ -252,14 +258,32 @@ export class Boot extends Component implements LevelSessionHost {
             },
         });
 
+        // 通过 LevelLoader 读取关卡 JSON（默认 X01，支持 ?level=X02），加载前暂停物理步与输入
+        const levelLoader = LevelLoader.attach(this.node, this);
+        this.levelLoader = levelLoader;
+
         if (GameConst.DEBUG) {
-            TuningPanel.create(machine);
+            const tuningPanel = TuningPanel.create(machine);
+            this.tuningPanel = tuningPanel;
+            const levelEditor = LevelEditor.create(machine, {
+                ringLayer,
+                scoreJudge,
+                levelLoader,
+                host: {
+                    onEditorEnter: () => this.enterLevelEditorMode(),
+                    onEditorExit: (info) => this.exitLevelEditorMode(info),
+                    onEditorDurationChanged: (sec) => this.onEditorDurationChanged(sec),
+                },
+            });
+            this.levelEditor = levelEditor;
+            tuningPanel.bindEditorToggle(
+                () => levelEditor.toggle(),
+                () => levelEditor.isOpen,
+            );
         }
 
-        // 通过 LevelLoader 读取关卡 JSON（默认 X01，支持 ?level=X02），加载前暂停物理步与输入
         this.syncRuntimeWithLevelState();
-        this.levelLoader = LevelLoader.attach(this.node, this);
-        this.levelLoader.loadFromQueryOrDefault();
+        levelLoader.loadFromQueryOrDefault();
 
         this.fitMachine();
         view.on('canvas-resize', this.fitMachine, this);
@@ -275,7 +299,7 @@ export class Boot extends Component implements LevelSessionHost {
         if (!this.sfx) {
             return;
         }
-        if (this.levelState.isPlaying) {
+        if (this.levelState.isPlaying && !this.editorActive) {
             const leftOut = this.leftBladder?.output ?? 0;
             const rightOut = this.rightBladder?.output ?? 0;
             const maxOut = leftOut > rightOut ? leftOut : rightOut;
@@ -368,7 +392,7 @@ export class Boot extends Component implements LevelSessionHost {
     }
 
     private syncRuntimeWithLevelState(): void {
-        const running = this.levelState.shouldRunPhysics;
+        const running = this.levelState.shouldRunPhysics && !this.editorActive;
         if (this.stepper) {
             this.stepper.running = running;
         }
@@ -379,6 +403,46 @@ export class Boot extends Component implements LevelSessionHost {
         this.rightJetBtn?.setInputEnabled(running);
         this.glassTap?.setInputEnabled(running);
         this.hud?.syncFromState(true);
+    }
+
+    private enterLevelEditorMode(): void {
+        this.editorActive = true;
+        this.tuningPanel?.setPanelOpen(false);
+        this.scoreJudge?.finishClearingImmediately();
+        this.hud?.setSuppressedByEditor(true);
+        this.ringSpawner?.setInputEnabled(false);
+        this.syncRuntimeWithLevelState();
+        this.tuningPanel?.syncEditorToggleVisual();
+    }
+
+    private onEditorDurationChanged(durationSec: number): void {
+        this.currentLevelOptions.durationSec = durationSec;
+        const freeRings = this.countFreeRings();
+        this.levelState.reset({ durationSec, initialFreeRings: freeRings });
+        this.hud?.syncFromState(true);
+    }
+
+    private exitLevelEditorMode(info: LevelEditorExitInfo): void {
+        this.editorActive = false;
+        this.hud?.setSuppressedByEditor(false);
+        this.ringSpawner?.setInputEnabled(true);
+        this.tuningPanel?.syncEditorToggleVisual();
+
+        if (info.edited) {
+            this.currentLevelOptions.durationSec = info.durationSec;
+            this.tidePullSkill?.reset();
+            this.calmSeaSkill?.reset();
+            this.funnel?.reset();
+            this.pillarEnergy?.reset(this.currentLevelOptions.pillarEnergy);
+            this.lastCountdownTickSec = -1;
+            const totalRings = this.ringLayer ? this.ringLayer.getRings().length : info.freeRingCount;
+            this.levelState.reset({ durationSec: info.durationSec, initialFreeRings: info.freeRingCount });
+            if (totalRings > 0) {
+                this.levelState.start();
+            }
+        }
+
+        this.syncRuntimeWithLevelState();
     }
 
     private onAfterPhysicsStep = (dt: number): void => {

@@ -16,6 +16,7 @@ import { TuningSlider } from './TuningSlider';
 const { ccclass } = _decorator;
 
 const TOGGLE_RECT = { x: 24, y: 596, width: 112, height: 48 } as const;
+const EDITOR_TOGGLE_RECT = { x: 146, y: 596, width: 112, height: 48 } as const;
 const PANEL_WIDTH = 920;
 const PANEL_HEIGHT = 544;
 const PANEL_X = LayoutConfig.innerScreen.x + (LayoutConfig.innerScreen.width - PANEL_WIDTH) / 2;
@@ -52,6 +53,7 @@ interface PanelButton {
 export class TuningPanel extends Component {
     private gfx!: Graphics;
     private toggleBtn!: PanelButton;
+    private editorToggleBtn: PanelButton | null = null;
     private bodyNode!: Node;
     private exportBoxNode!: Node;
 
@@ -66,6 +68,8 @@ export class TuningPanel extends Component {
     private syncingFromExternal = false;
     private lastExportJson = '';
     private unsubHotZone: (() => void) | null = null;
+    private onEditorToggleCb: (() => void) | null = null;
+    private isEditorActiveFn: (() => boolean) | null = null;
 
     static create(machine: Node): TuningPanel {
         const node = new Node('TuningPanel');
@@ -122,6 +126,17 @@ export class TuningPanel extends Component {
         return resolveDefaultStorage();
     }
 
+    /** 绑定摆关器开关（打开摆关时自动收起调参大面板，以免遮挡内屏拖圈） */
+    bindEditorToggle(onToggle: () => void, isActive: () => boolean): void {
+        this.onEditorToggleCb = onToggle;
+        this.isEditorActiveFn = isActive;
+        this.redraw();
+    }
+
+    syncEditorToggleVisual(): void {
+        this.redraw();
+    }
+
     private buildToggleButton(): void {
         const cx = TOGGLE_RECT.x + TOGGLE_RECT.width / 2;
         const cy = TOGGLE_RECT.y + TOGGLE_RECT.height / 2;
@@ -138,6 +153,30 @@ export class TuningPanel extends Component {
             () => (this.bodyNode?.active ? 'active' : 'normal'),
             () => this.togglePanel(),
         );
+
+        const ex = EDITOR_TOGGLE_RECT.x + EDITOR_TOGGLE_RECT.width / 2;
+        const ey = EDITOR_TOGGLE_RECT.y + EDITOR_TOGGLE_RECT.height / 2;
+        this.editorToggleBtn = this.createButton(
+            this.node,
+            'LevelEditorToggle',
+            '摆关',
+            ex,
+            ey,
+            EDITOR_TOGGLE_RECT.width,
+            EDITOR_TOGGLE_RECT.height,
+            20,
+            10,
+            () => (this.isEditorActiveFn?.() ? 'active' : 'normal'),
+            () => this.onEditorToggleClicked(),
+        );
+    }
+
+    private onEditorToggleClicked(): void {
+        if (this.bodyNode?.active) {
+            this.setPanelOpen(false);
+        }
+        this.onEditorToggleCb?.();
+        this.redraw();
     }
 
     private buildPanelBody(): void {
@@ -408,7 +447,10 @@ export class TuningPanel extends Component {
         this.setPanelOpen(!this.bodyNode.active);
     }
 
-    private setPanelOpen(open: boolean): void {
+    setPanelOpen(open: boolean): void {
+        if (!this.bodyNode) {
+            return;
+        }
         this.bodyNode.active = open;
         if (!open && this.exportBoxNode) {
             this.exportBoxNode.active = false;
@@ -564,6 +606,9 @@ export class TuningPanel extends Component {
 
         g.clear();
         this.drawButton(g, gTransform, this.toggleBtn);
+        if (this.editorToggleBtn) {
+            this.drawButton(g, gTransform, this.editorToggleBtn);
+        }
 
         if (!this.bodyNode.active) {
             return;

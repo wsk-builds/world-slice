@@ -253,6 +253,14 @@ export const GameConst = {
     glassTapRippleDurationSec: 0.42,
     glassTapRippleStartRadiusPx: 10,
     glassTapRippleEndRadiusPx: 56,
+
+    /** T022 拖拽摆关器配置 */
+    editorMinDurationSec: 10,
+    editorMaxDurationSec: 300,
+    editorDurationStepSec: 5,
+    editorWallPadPx: 5,
+    editorRingHitPadPx: 14,
+    editorDefaultHitRadiusPx: 44,
 } as const;
 
 export interface RingPillarGeometry {

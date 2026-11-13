@@ -145,4 +145,22 @@ export const Palette = {
         border: hex('#64DFDF', 0.78),
         boundary: hex('#FFE066', 0.85),
     },
+
+    /** T022 拖拽摆关器配色 */
+    editor: {
+        panelBg: hex('#111A24', 0.92),
+        panelBorder: hex('#64DFDF', 0.78),
+        exportBg: hex('#0D141C', 0.97),
+        btnFill: hex('#28384A'),
+        btnActiveFill: hex('#2B6B73'),
+        btnPrimaryFill: hex('#2E7D6B'),
+        btnDangerFill: hex('#7A3440'),
+        btnMutedFill: hex('#202833'),
+        btnBorder: hex('#7CA2BD'),
+        btnActiveBorder: hex('#8EE6CE'),
+        selectionRing: hex('#FFE066', 0.96),
+        selectionCross: hex('#64DFDF', 0.9),
+        validText: hex('#5CE6D0'),
+        errorText: hex('#FF7B7B'),
+    },
 } as const;

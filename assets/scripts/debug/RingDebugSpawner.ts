@@ -24,11 +24,19 @@ export class RingDebugSpawner extends Component {
     private slotIndex = 0;
     private tankTransform: UITransform | null = null;
     private stepper: PhysicsStepper | null = null;
+    private inputEnabled = true;
     private shiftLeftHeld = false;
     private shiftRightHeld = false;
 
     get currentSpec(): RingSpec {
         return DEBUG_RING_SLOTS[this.slotIndex];
+    }
+
+    setInputEnabled(enabled: boolean): void {
+        this.inputEnabled = enabled;
+        if (!enabled) {
+            this.clearShiftState();
+        }
     }
 
     onLoad(): void {
@@ -72,7 +80,7 @@ export class RingDebugSpawner extends Component {
     };
 
     private onTouchStart = (event: EventTouch): void => {
-        if (!this.isShiftHeld() || !this.ringLayer || !this.tankTransform || (this.stepper && !this.stepper.running)) {
+        if (!this.inputEnabled || !this.isShiftHeld() || !this.ringLayer || !this.tankTransform || (this.stepper && !this.stepper.running)) {
             return;
         }
         const uiLoc = event.getUILocation();
@@ -81,6 +89,9 @@ export class RingDebugSpawner extends Component {
     };
 
     private onKeyDown = (event: EventKeyboard): void => {
+        if (!this.inputEnabled) {
+            return;
+        }
         if (event.keyCode === KeyCode.SHIFT_LEFT) {
             this.shiftLeftHeld = true;
             return;

@@ -187,6 +187,61 @@ export class ScoreJudge extends Component {
         this.matchDeferElapsed.right = 0;
     }
 
+    /** 将指定已锁定圈（及同柱上方已锁圈）解锁恢复为自由动态圈（供 T022 摆关移动/删改使用） */
+    unlockRing(ring: Ring, unlockAboveOnSamePillar = true): Ring[] {
+        this.holdProgress.delete(ring);
+        const unlocked: Ring[] = [];
+        for (const side of ['left', 'right'] as const) {
+            const stack = this.stacks[side];
+            const idx = stack.indexOf(ring);
+            if (idx < 0) {
+                continue;
+            }
+            const fromIdx = unlockAboveOnSamePillar ? stack.count - 1 : idx;
+            for (let i = fromIdx; i >= idx; i--) {
+                const target = stack.removeAt(i);
+                if (!target) {
+                    continue;
+                }
+                this.holdProgress.delete(target);
+                this.lockedOffsets.delete(target);
+                this.droppingRings.delete(target);
+                target.locked = false;
+                if (target.isBodyReady) {
+                    target.body3D.type = 'dynamic';
+                    target.body3D.clearVelocity();
+                    target.body3D.clearForces();
+                }
+                unlocked.push(target);
+            }
+            this.matchDeferElapsed[side] = 0;
+        }
+        if (unlocked.length === 0 && ring.locked && !ring.clearing) {
+            ring.locked = false;
+            if (ring.isBodyReady) {
+                ring.body3D.type = 'dynamic';
+                ring.body3D.clearVelocity();
+                ring.body3D.clearForces();
+            }
+            unlocked.push(ring);
+        }
+        return unlocked;
+    }
+
+    /** 立即完成所有正在闪烁消除中的圈并清理下落/稳定过渡状态（供摆关进入时防幽灵圈残留） */
+    finishClearingImmediately(): void {
+        if (this.flashingRings.size > 0) {
+            for (const [ring] of Array.from(this.flashingRings.entries())) {
+                this.flashingRings.delete(ring);
+                this.ringLayer?.destroyRing(ring);
+            }
+        }
+        this.droppingRings.clear();
+        this.holdProgress.clear();
+        this.matchDeferElapsed.left = 0;
+        this.matchDeferElapsed.right = 0;
+    }
+
     /** 同步所有已锁定圈的位置到当前柱子布局与槽位高度（保留各自的 3D 自然微倾与轻微偏心） */
     syncLockedRings(): void {
         for (const side of ['left', 'right'] as const) {
