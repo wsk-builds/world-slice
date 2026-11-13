@@ -28,12 +28,16 @@ export class PillarCollider3D {
     baseTopY = 0;
     tipY = 0;
 
-    tipRadius = 7;
-    rootRadius = 14;
-    crossHalfWidth = 66;
-    crossHalfDepth = 55;
+    tipRadius = 5.5;
+    rootRadius = 11;
+    /** 十字卡托碰撞半宽（明显短于视觉半宽 visualCrossHalfWidth，防止未入柱圆环卡在卡托翼尖） */
+    crossHalfWidth = 34;
+    /** 十字卡托碰撞半深（明显短于视觉半深 visualCrossHalfDepth） */
+    crossHalfDepth = 30;
+    visualCrossHalfWidth = 47;
+    visualCrossHalfDepth = 42;
 
-    friction = 0.16;
+    friction = 0.05;
     restitution = 0.06;
 
     readonly segments: TaperedCapsule3D[] = [];
@@ -54,11 +58,15 @@ export class PillarCollider3D {
 
         this.tipRadius = geom.pillarTipWidth * 0.5;
         this.rootRadius = geom.pillarRootWidth * 0.5;
-        this.crossHalfWidth = geom.pillarBaseWidth * 0.5;
-        this.crossHalfDepth = geom.pillarCrossDepth * 0.5;
+        this.visualCrossHalfWidth = geom.pillarBaseWidth * 0.5;
+        this.visualCrossHalfDepth = geom.pillarCrossDepth * 0.5;
+        this.crossHalfWidth = geom.pillarColliderBaseWidth * 0.5;
+        this.crossHalfDepth = geom.pillarColliderCrossDepth * 0.5;
 
         const wingCenterR = geom.pillarBaseHeight * 0.5;
-        const wingTipR = Math.max(4, geom.pillarBaseHeight * 0.22);
+        const wingTipR = 2.0;
+        // 补偿锥形胶囊半径收细，使卡托顶面基本保持水平承接（仅微降约 1px），底面大幅上收且翼尖圆细不卡外侧圈
+        const wingTipY = this.crossCenterY + (wingCenterR - wingTipR) * 0.85;
 
         this.segments.length = 0;
 
@@ -75,7 +83,7 @@ export class PillarCollider3D {
         });
 
         // 2. 下段悬空收尖尾椎
-        const tailTipR = 2.5;
+        const tailTipR = 2.0;
         this.segments.push({
             ax: x,
             ay: tailBottomY + tailTipR,
@@ -87,14 +95,14 @@ export class PillarCollider3D {
             radiusB: this.rootRadius * 0.8,
         });
 
-        // 3. 十字横翼（左右各一段从中心向翼尖收细的圆润棱翼，顶面在中心处对齐 baseTopY）
+        // 3. 十字横翼碰撞胶囊（比视觉十字翼收短一截且翼尖收细，外侧圈质心悬空自然翻落，入柱圈稳坐承接面）
         const xSpan = Math.max(wingTipR + 2, this.crossHalfWidth - wingTipR);
         this.segments.push({
             ax: x,
             ay: this.crossCenterY,
             az: 0,
             bx: x - xSpan,
-            by: this.crossCenterY,
+            by: wingTipY,
             bz: 0,
             radiusA: wingCenterR,
             radiusB: wingTipR,
@@ -104,20 +112,20 @@ export class PillarCollider3D {
             ay: this.crossCenterY,
             az: 0,
             bx: x + xSpan,
-            by: this.crossCenterY,
+            by: wingTipY,
             bz: 0,
             radiusA: wingCenterR,
             radiusB: wingTipR,
         });
 
-        // 4. 十字纵翼（前后各一段，兜住任何 3D 翻滚姿态落下的圆环）
+        // 4. 十字纵翼碰撞胶囊（前后各一段收短胶囊，比视觉翼尖更短）
         const zSpan = Math.max(wingTipR + 2, this.crossHalfDepth - wingTipR);
         this.segments.push({
             ax: x,
             ay: this.crossCenterY,
             az: 0,
             bx: x,
-            by: this.crossCenterY,
+            by: wingTipY,
             bz: -zSpan,
             radiusA: wingCenterR,
             radiusB: wingTipR,
@@ -127,7 +135,7 @@ export class PillarCollider3D {
             ay: this.crossCenterY,
             az: 0,
             bx: x,
-            by: this.crossCenterY,
+            by: wingTipY,
             bz: zSpan,
             radiusA: wingCenterR,
             radiusB: wingTipR,

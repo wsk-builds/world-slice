@@ -7,7 +7,7 @@ export interface Point2D {
 
 /**
  * 缸坐标工具。
- * 原点在内屏左下角，x 向右（0 ~ 940），y 向上（0 ~ 575）。
+ * 原点在内屏左下角，x 向右（0 ~ innerScreen.width），y 向上（0 ~ innerScreen.height）。
  * 百分比按 0 ~ 100 计，例如 (32, 26) 表示宽 32%、高 26%。
  */
 export const TankSpace = {

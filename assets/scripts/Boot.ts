@@ -122,10 +122,13 @@ export class Boot extends Component {
 
     private spawnInitialDemoRings(ringLayer: RingLayer): void {
         const colors = ['red', 'green', 'blue'] as const;
+        const innerW = LayoutConfig.innerScreen.width;
+        const margin = 175;
+        const span = Math.max(200, innerW - margin * 2);
         for (let i = 0; i < 9; i++) {
             const col = colors[i % 3];
-            const x = 165 + ((i * 79) % 610);
-            const y = 70 + Math.floor(i / 3) * 85;
+            const x = margin + ((i * 97) % span);
+            const y = 65 + Math.floor(i / 3) * 80;
             ringLayer.spawn(x, y, { kind: 'normal', color: col });
         }
     }

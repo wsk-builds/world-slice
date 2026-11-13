@@ -141,10 +141,10 @@ export class ShellView extends Component {
         return [
             {
                 rect: LayoutConfig.chin,
-                text: '下巴铭牌区 (940×85)',
+                text: `下巴铭牌区 (${LayoutConfig.chin.width}×${LayoutConfig.chin.height})`,
                 fill: Palette.chinFill,
                 border: Palette.chinBorder,
-                fontSize: 22,
+                fontSize: 20,
                 textColor: Palette.labelMuted,
                 radius: 8,
             },
@@ -182,7 +182,7 @@ export class ShellView extends Component {
             },
             {
                 rect: LayoutConfig.countdown,
-                text: '倒计时 (180×56)',
+                text: `倒计时 (${LayoutConfig.countdown.width}×${LayoutConfig.countdown.height})`,
                 fill: Palette.hudFill,
                 border: Palette.hudBorder,
                 fontSize: 18,

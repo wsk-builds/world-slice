@@ -97,6 +97,28 @@ describe('TorusWorld3D 真 3D 圆环翻转、锥形十字柱与立体堆叠', ()
                 shaftRadiusAtY: pillar.shaftRadiusAtY(ring.y),
             }),
         ).toBe(true);
+
+        // 大号木圈（1.15x）与小金环（0.8x）对准柱杆落下同样稳稳停在收短后的卡托上不漏底
+        for (const scale of [0.8, 1.15]) {
+            const subWorld = new TorusWorld3D();
+            const subPillar = subWorld.addPillar(new PillarCollider3D(pillarX, pillarBottomY, geom));
+            const r = subWorld.addBody(
+                new TorusBody3D({
+                    x: pillarX + 3,
+                    y: subPillar.tipY + 30,
+                    z: -2,
+                    majorRadius: majorR * scale,
+                    tubeRadius: tubeR * scale,
+                    linearDamping: 0.6,
+                    angularDamping: 3.5,
+                }),
+            );
+            for (let step = 0; step < 180; step++) {
+                r.applyCentralForce(0, -520 * r.mass, 0);
+                subWorld.step(1 / 60);
+            }
+            expect(r.y).toBeGreaterThan(subPillar.baseTopY - 2);
+        }
     });
 
     it('多个圈在缸底沉降碰撞后形成含前后 Z 错位与自然斜靠的真实 3D 堆叠，不穿底不越界', () => {
@@ -172,5 +194,40 @@ describe('TorusWorld3D 真 3D 圆环翻转、锥形十字柱与立体堆叠', ()
         expect(lockedTilt).toBeGreaterThan(10);
         expect(lockedTilt).toBeLessThanOrEqual(15.05);
         expect(Math.hypot(clamped.x - 225.6, clamped.z)).toBeLessThan(innerR - 12);
+    });
+
+    it('未套入柱杆的圈贴着柱杆外侧擦过十字卡托时不会卡在卡托翼尖上，而是顺滑翻落至缸底', () => {
+        for (const scale of [1.0, 0.8]) {
+            const world = new TorusWorld3D();
+            const pillarX = TankSpace.pctToPxX(24);
+            const pillarBottomY = TankSpace.pctToPxY(31);
+            const pillar = world.addPillar(new PillarCollider3D(pillarX, pillarBottomY, geom));
+
+            const curTubeR = tubeR * scale;
+            const curMajorR = majorR * scale;
+            const curOuterR = curMajorR + curTubeR;
+
+            // 将圈放置在柱杆右侧外缘紧贴处（未套入柱杆，最易挂卡在过长卡托上的临界位置）
+            const startX = pillarX + pillar.rootRadius + curOuterR + 1.5;
+            const ring = world.addBody(
+                new TorusBody3D({
+                    x: startX,
+                    y: pillar.baseTopY + 36,
+                    z: 0,
+                    majorRadius: curMajorR,
+                    tubeRadius: curTubeR,
+                    linearDamping: 0.5,
+                    angularDamping: 3.3,
+                }),
+            );
+
+            for (let step = 0; step < 180; step++) {
+                ring.applyCentralForce(0, -520 * ring.mass, 0);
+                world.step(1 / 60);
+            }
+
+            // 必须顺滑脱离十字卡托并落到尾椎下方的缸底区域，绝不卡在卡托高度
+            expect(ring.y).toBeLessThan(pillar.tailBottomY);
+        }
     });
 });

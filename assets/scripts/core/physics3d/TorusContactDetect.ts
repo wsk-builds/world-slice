@@ -327,9 +327,10 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
  */
 export function detectTorusPillarContacts(ring: TorusBody3D, pillar: PillarCollider3D, out: Contact3D[]): void {
     const outerR = ring.outerRadius;
+    const maxHalfW = Math.max(pillar.crossHalfWidth, pillar.visualCrossHalfWidth);
     if (
-        ring.x + outerR < pillar.x - pillar.crossHalfWidth ||
-        ring.x - outerR > pillar.x + pillar.crossHalfWidth ||
+        ring.x + outerR < pillar.x - maxHalfW ||
+        ring.x - outerR > pillar.x + maxHalfW ||
         ring.y + outerR < pillar.tailBottomY ||
         ring.y - outerR > pillar.tipY
     ) {
@@ -341,6 +342,44 @@ export function detectTorusPillarContacts(ring: TorusBody3D, pillar: PillarColli
 
     for (let s = 0; s < pillar.segments.length; s++) {
         detectTorusTaperedSegment(ring, pillar.segments[s], mu, rest, out);
+    }
+
+    // 对已真正套入柱杆（柱心穿过圆环内孔）的圈，由卡托承接面 baseTopY 平稳兜底，既允许外侧卡托碰撞收短防卡，又防止偏心大圈漏下尾椎
+    const absNy = Math.abs(ring.basisN.y);
+    if (absNy > 0.5 && ring.y >= pillar.crossBottomY && ring.y - outerR < pillar.baseTopY) {
+        const innerR = Math.max(0, ring.majorRadius - ring.tubeRadius);
+        const radialXZ = Math.hypot(ring.x - pillar.x, ring.z - pillar.z);
+        if (radialXZ < innerR * absNy) {
+            const seatStart = out.length;
+            const R = ring.majorRadius;
+            const rTube = ring.tubeRadius;
+            const seatTopY = pillar.baseTopY;
+            for (let i = 0; i < WALL_RING_SAMPLES; i++) {
+                const c = RING_ANGLES_12.cos[i];
+                const s = RING_ANGLES_12.sin[i];
+                const qx = ring.x + R * (c * ring.basisU.x + s * ring.basisV.x);
+                const qy = ring.y + R * (c * ring.basisU.y + s * ring.basisV.y);
+                const qz = ring.z + R * (c * ring.basisU.z + s * ring.basisV.z);
+                if (qy < seatTopY + rTube && qy > pillar.crossBottomY - rTube) {
+                    pushContactDedup(
+                        out,
+                        seatStart,
+                        4,
+                        ring,
+                        null,
+                        qx,
+                        seatTopY,
+                        qz,
+                        0,
+                        1,
+                        0,
+                        seatTopY + rTube - qy,
+                        mu,
+                        rest,
+                    );
+                }
+            }
+        }
     }
 }
 

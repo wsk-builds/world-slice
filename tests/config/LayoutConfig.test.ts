@@ -20,14 +20,14 @@ function overlaps(a: LayoutRect, b: LayoutRect): boolean {
 }
 
 describe('LayoutConfig', () => {
-    it('内屏与下巴铭牌区尺寸与位置符合设计要求', () => {
+    it('内屏与下巴铭牌区尺寸与位置符合设计要求（内屏扩容至 1060×606）', () => {
         const { innerScreen, chin, designWidth } = LayoutConfig;
-        expect(innerScreen.width).toBe(940);
-        expect(innerScreen.height).toBe(575);
+        expect(innerScreen.width).toBe(1060);
+        expect(innerScreen.height).toBe(606);
         expect(innerScreen.x).toBe((designWidth - innerScreen.width) / 2);
 
-        expect(chin.width).toBe(940);
-        expect(chin.height).toBe(85);
+        expect(chin.width).toBe(1060);
+        expect(chin.height).toBe(66);
         expect(chin.x).toBe(innerScreen.x);
         expect(chin.y + chin.height).toBe(innerScreen.y);
     });

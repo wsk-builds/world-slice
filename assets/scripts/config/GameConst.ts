@@ -1,6 +1,6 @@
 /**
  * 全局规则常数与 3D 圈/柱/水缸几何结构常量（纯逻辑，不依赖引擎）。
- * 尺寸比例对齐参考视频实测值（940 × 575 内屏基准）。
+ * 尺寸比例适配扩容后的 1060 × 606 内屏与纤巧圆环、精巧十字玉柱。
  */
 export const GameConst = {
     /** 统一调试开关，正式发布时置为 false */
@@ -18,41 +18,44 @@ export const GameConst = {
     /** 单根柱子最多叠放的圈数 */
     pillarCapacity: 6,
 
-    /** 中号圈外径占缸宽的比例（参考视频实测约 9.6%，即 1 / 10.4 ≈ 90.4px） */
-    ringOuterDiameterRatio: 1 / 10.4,
+    /** 中号圈外径占缸宽的比例（1 / 13.25 ≈ 80.0px，比旧版略微缩小且水缸活动空间更宽裕） */
+    ringOuterDiameterRatio: 1 / 13.25,
 
-    /** 圈管粗占自身外径的比例（参考视频实测约 20%，中号圈管粗约 18.1px） */
-    ringTubeRatio: 0.2,
+    /** 圈管粗占自身外径的比例（15.5%，中号圈管粗约 12.4px，线条纤巧利落不显胖） */
+    ringTubeRatio: 0.155,
 
     /** 中号圈基准管粗近似常量（像素，供静态参考；精确值由 calcRingPillarGeometry 按缸宽算出） */
-    ringThickness: 18.08,
+    ringThickness: 12.4,
 
-    /** 薄层 3D 水缸前后纵深与中号圈外径之比（约 128px，兼顾 360° 三轴翻转、缸底前后斜靠堆叠与柱位对齐） */
-    tankDepthRatio: 1.42,
+    /** 薄层 3D 水缸前后纵深与中号圈外径之比（约 118px，兼顾全圈种 360° 三轴翻转、前后斜靠堆叠与柱位对齐） */
+    tankDepthRatio: 1.48,
 
-    /** 锥形柱杆顶端直径（像素，圆润收细便于入环） */
-    pillarTipWidth: 14,
+    /** 锥形柱杆顶端直径（像素，整体变细更精致且易于入环） */
+    pillarTipWidth: 11,
 
     /** 锥形柱杆根部直径（像素，上尖下粗） */
-    pillarRootWidth: 28,
+    pillarRootWidth: 22,
 
     /** 锥形柱杆中段参考直径（像素） */
-    pillarWidth: 21,
+    pillarWidth: 16.5,
 
-    /** 单层微倾叠放高度相对管粗的留余系数（保证 6 个保留自然 3D 微倾的圈稳妥叠在柱尖下） */
-    pillarSlotPitchScale: 1.06,
+    /** 单层微倾叠放高度相对管粗的留余系数（适配变细管径下的 15° 自然三维微倾叠放，6 层稳妥对齐柱尖） */
+    pillarSlotPitchScale: 1.24,
 
-    /** 十字四翼卡托横向总宽与中号圈外径之比（参考视频实测约 1.46 倍 ≈ 132px） */
-    pillarCrossWidthRatio: 1.46,
+    /** 十字四翼卡托视觉横向总宽与中号圈外径之比（收短至 1.24 倍 ≈ 99.2px，比旧版 132px 缩短 25%） */
+    pillarCrossWidthRatio: 1.24,
 
-    /** 十字四翼卡托前后总深与中号圈外径之比（约 110px，留出玻璃内壁间隙） */
-    pillarCrossDepthRatio: 1.22,
+    /** 十字四翼卡托视觉前后总深与中号圈外径之比（收短至 1.12 倍 ≈ 89.6px） */
+    pillarCrossDepthRatio: 1.12,
+
+    /** 十字卡托碰撞翼展占视觉翼展的比例（0.72：碰撞体积比实际显示的卡托还短 28%，彻底避免外侧圈挂卡在卡托上） */
+    pillarCrossColliderRatio: 0.72,
 
     /** 十字四翼卡托竖向厚度（像素） */
-    pillarBaseHeight: 24,
+    pillarBaseHeight: 19,
 
     /** 十字卡托下方悬空收尖尾椎高度（像素） */
-    pillarTailHeight: 42,
+    pillarTailHeight: 34,
 
     /** 缸壁碰撞厚度（像素，位于内壁外侧） */
     tankWallThickness: 24,
@@ -123,10 +126,14 @@ export interface RingPillarGeometry {
     pillarWidth: number;
     /** 上段有效套圈锥杆高度（从十字卡托顶面到柱尖） */
     pillarHeight: number;
-    /** 十字四翼卡托横向总宽（X 轴） */
+    /** 十字四翼卡托视觉横向总宽（X 轴） */
     pillarBaseWidth: number;
-    /** 十字四翼卡托前后总深（Z 轴） */
+    /** 十字四翼卡托视觉前后总深（Z 轴） */
     pillarCrossDepth: number;
+    /** 十字四翼卡托碰撞横向总宽（X 轴，比视觉卡托更短以防外侧挂卡） */
+    pillarColliderBaseWidth: number;
+    /** 十字四翼卡托碰撞前后总深（Z 轴，比视觉卡托更短以防外侧挂卡） */
+    pillarColliderCrossDepth: number;
     /** 十字四翼卡托竖向厚度 */
     pillarBaseHeight: number;
     /** 下段悬空收尖尾椎高度（十字卡托底面到尾尖） */
@@ -148,6 +155,8 @@ export function calcRingPillarGeometry(tankWidth: number): RingPillarGeometry {
     const pillarHeight = GameConst.pillarCapacity * ringThickness * GameConst.pillarSlotPitchScale;
     const pillarBaseWidth = ringOuterDiameter * GameConst.pillarCrossWidthRatio;
     const pillarCrossDepth = ringOuterDiameter * GameConst.pillarCrossDepthRatio;
+    const pillarColliderBaseWidth = pillarBaseWidth * GameConst.pillarCrossColliderRatio;
+    const pillarColliderCrossDepth = pillarCrossDepth * GameConst.pillarCrossColliderRatio;
     const pillarBaseHeight = GameConst.pillarBaseHeight;
     const pillarTailHeight = GameConst.pillarTailHeight;
     const pillarTotalHeight = pillarTailHeight + pillarBaseHeight + pillarHeight;
@@ -163,6 +172,8 @@ export function calcRingPillarGeometry(tankWidth: number): RingPillarGeometry {
         pillarHeight,
         pillarBaseWidth,
         pillarCrossDepth,
+        pillarColliderBaseWidth,
+        pillarColliderCrossDepth,
         pillarBaseHeight,
         pillarTailHeight,
         pillarTotalHeight,

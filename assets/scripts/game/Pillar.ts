@@ -112,8 +112,8 @@ export class Pillar extends Component {
     }
 
     /** 按 FeelConfig 与 GameConst 刷新位置、3D 物理碰撞与 3D 模型 */
-    applyLayout(_redraw = false): void {
-        const prevTotal = this.geom.pillarTotalHeight;
+    applyLayout(forceRebuildMesh = false): void {
+        const prev = this.geom;
         const geom = calcRingPillarGeometry(TankSpace.width);
         this.geom = geom;
 
@@ -127,7 +127,12 @@ export class Pillar extends Component {
 
         if (this.view3DRoot) {
             this.view3DRoot.setPosition(Stage3DRig.pxTo3D(x), Stage3DRig.pxTo3D(y), 0);
-            if (Math.abs(prevTotal - geom.pillarTotalHeight) > 0.01) {
+            const meshChanged =
+                forceRebuildMesh ||
+                Math.abs(prev.pillarTotalHeight - geom.pillarTotalHeight) > 0.01 ||
+                Math.abs(prev.pillarBaseWidth - geom.pillarBaseWidth) > 0.01 ||
+                Math.abs(prev.pillarRootWidth - geom.pillarRootWidth) > 0.01;
+            if (meshChanged) {
                 if (this.spindleRenderer) {
                     this.spindleRenderer.mesh = createPillarSpindleMesh(geom);
                 }

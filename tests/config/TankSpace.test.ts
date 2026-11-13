@@ -14,7 +14,10 @@ describe('TankSpace', () => {
             y: LayoutConfig.innerScreen.height * 0.2,
         });
 
-        const back = TankSpace.pxToPct(300.8, 149.5);
+        const back = TankSpace.pxToPct(
+            LayoutConfig.innerScreen.width * 0.32,
+            LayoutConfig.innerScreen.height * 0.26,
+        );
         expect(back.x).toBeCloseTo(32, 6);
         expect(back.y).toBeCloseTo(26, 6);
     });

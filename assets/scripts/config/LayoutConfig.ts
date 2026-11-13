@@ -17,29 +17,29 @@ export function rectCenter(rect: LayoutRect): { x: number; y: number } {
 const DESIGN_WIDTH = 1624;
 const DESIGN_HEIGHT = 750;
 
-const INNER_WIDTH = 940;
-const INNER_HEIGHT = 575;
-const INNER_X = (DESIGN_WIDTH - INNER_WIDTH) / 2; // 342
-const CHIN_HEIGHT = 85;
-const CHIN_Y = 18;
-const INNER_Y = CHIN_Y + CHIN_HEIGHT; // 103
+const INNER_WIDTH = 1060;
+const INNER_HEIGHT = 606;
+const INNER_X = (DESIGN_WIDTH - INNER_WIDTH) / 2; // 282
+const CHIN_HEIGHT = 66;
+const CHIN_Y = 10;
+const INNER_Y = CHIN_Y + CHIN_HEIGHT; // 76
 
-const GRIP_WIDTH = INNER_X; // 342
-const RIGHT_GRIP_X = INNER_X + INNER_WIDTH; // 1282
+const GRIP_WIDTH = INNER_X; // 282
+const RIGHT_GRIP_X = INNER_X + INNER_WIDTH; // 1342
 
 const JET_SIZE = 220;
 const JET_Y = 100;
-const LEFT_JET_X = (GRIP_WIDTH - JET_SIZE) / 2; // 61
-const RIGHT_JET_X = RIGHT_GRIP_X + (GRIP_WIDTH - JET_SIZE) / 2; // 1343
+const LEFT_JET_X = (GRIP_WIDTH - JET_SIZE) / 2; // 31
+const RIGHT_JET_X = RIGHT_GRIP_X + (GRIP_WIDTH - JET_SIZE) / 2; // 1373
 
 const ITEM_SIZE = 100;
 const ITEM_GAP = 20;
 const ITEM_Y = 370;
 
 const COUNTDOWN_WIDTH = 180;
-const COUNTDOWN_HEIGHT = 56;
+const COUNTDOWN_HEIGHT = 52;
 const COUNTDOWN_X = (DESIGN_WIDTH - COUNTDOWN_WIDTH) / 2; // 722
-const COUNTDOWN_Y = 686;
+const COUNTDOWN_Y = 690;
 
 const MIASMA_WIDTH = 300;
 const MIASMA_HEIGHT = 24;
@@ -52,7 +52,7 @@ export const LayoutConfig = {
     designWidth: DESIGN_WIDTH,
     designHeight: DESIGN_HEIGHT,
 
-    /** 内屏（水缸可视窗口）：940 × 575，水平居中 */
+    /** 内屏（水缸可视窗口）：1060 × 606，水平居中 */
     innerScreen: {
         x: INNER_X,
         y: INNER_Y,
@@ -60,7 +60,7 @@ export const LayoutConfig = {
         height: INNER_HEIGHT,
     } as LayoutRect,
 
-    /** 下巴铭牌区：940 × 85，紧贴内屏正下方 */
+    /** 下巴铭牌区：1060 × 66，紧贴内屏正下方 */
     chin: {
         x: INNER_X,
         y: CHIN_Y,
@@ -150,25 +150,25 @@ export const LayoutConfig = {
 
     /** 暂停键：左上角 */
     pauseBtn: {
-        x: 32,
-        y: 658,
+        x: 24,
+        y: 662,
         width: 64,
         height: 64,
     } as LayoutRect,
 
     /** 关卡号：左上角暂停键右侧 */
     levelLabel: {
-        x: 112,
-        y: 666,
-        width: 196,
+        x: 100,
+        y: 670,
+        width: 168,
         height: 48,
     } as LayoutRect,
 
     /** 右上角平台胶囊按钮留空区 */
     capsuleSafeArea: {
-        x: 1368,
-        y: 650,
-        width: 228,
+        x: 1358,
+        y: 654,
+        width: 242,
         height: 76,
     } as LayoutRect,
 } as const;

@@ -4,30 +4,33 @@ import { calcRingPillarGeometry, GameConst } from '../../assets/scripts/config/G
 import { TankSpace } from '../../assets/scripts/config/TankSpace';
 
 describe('GameConst & FeelConfig（按参考视频重设计的 3D 圈柱与比例）', () => {
-    it('正圆环与三段式锥形十字柱比例精确符合视频实测比例', () => {
+    it('纤巧正圆环与精巧三段式锥形十字柱比例正确，且卡托碰撞体积比视觉显示更短', () => {
         const geom = calcRingPillarGeometry(TankSpace.width);
 
-        // 中号圈外径 = 缸宽 / 10.4 ≈ 90.4px（占缸宽约 9.6%）
-        expect(geom.ringOuterDiameter).toBeCloseTo(TankSpace.width / 10.4, 5);
-        // 管粗占外径 20%，内孔占外径 60%
-        expect(geom.ringThickness).toBeCloseTo(geom.ringOuterDiameter * 0.2, 5);
-        expect(geom.ringInnerDiameter).toBeCloseTo(geom.ringOuterDiameter * 0.6, 5);
+        // 中号圈外径 = 缸宽 / 13.25 ≈ 80px，管粗占外径 15.5%（约 12.4px，纤巧不显胖），内孔占 69%
+        expect(geom.ringOuterDiameter).toBeCloseTo(TankSpace.width / 13.25, 5);
+        expect(geom.ringThickness).toBeCloseTo(geom.ringOuterDiameter * 0.155, 5);
+        expect(geom.ringInnerDiameter).toBeCloseTo(geom.ringOuterDiameter * 0.69, 5);
 
-        // 上尖下粗锥杆均比圈内孔明显窄，留足 3D 晃动与倾斜间隙
+        // 上尖下粗锥杆整体变细，均明显小于圈内孔
         expect(geom.pillarTipWidth).toBeLessThan(geom.pillarRootWidth);
-        expect(geom.pillarRootWidth).toBeLessThan(geom.ringInnerDiameter * 0.6);
+        expect(geom.pillarRootWidth).toBeLessThan(geom.ringInnerDiameter * 0.5);
 
-        // 十字四翼卡托明显宽于正圆环外径（约 1.46 倍），任何 3D 角度落下都能稳稳托住
-        expect(geom.pillarBaseWidth).toBeGreaterThan(geom.ringOuterDiameter * 1.35);
+        // 十字四翼卡托视觉宽度适度收短（约 1.24 倍圈外径），且碰撞宽度严格短于视觉宽度（72%）以防外侧圈挂卡
+        expect(geom.pillarBaseWidth).toBeGreaterThan(geom.ringOuterDiameter * 1.15);
+        expect(geom.pillarBaseWidth).toBeLessThan(geom.ringOuterDiameter * 1.3);
+        expect(geom.pillarColliderBaseWidth).toBeCloseTo(geom.pillarBaseWidth * 0.72, 5);
+        expect(geom.pillarColliderCrossDepth).toBeCloseTo(geom.pillarCrossDepth * 0.72, 5);
+        expect(geom.pillarColliderBaseWidth).toBeGreaterThan(geom.ringInnerDiameter);
 
-        // 上段有效柱杆高度可容纳 6 个保留微倾的圈，三段总高度约占内屏高的 1/3
+        // 上段有效柱杆高度可容纳 6 个保留微倾的圈，柱子整体更精巧（约占扩容后内屏高的 24%）
         expect(geom.pillarHeight).toBeCloseTo(
             GameConst.pillarCapacity * geom.ringThickness * GameConst.pillarSlotPitchScale,
             5,
         );
         const totalRatio = geom.pillarTotalHeight / TankSpace.height;
-        expect(totalRatio).toBeGreaterThan(0.29);
-        expect(totalRatio).toBeLessThan(0.36);
+        expect(totalRatio).toBeGreaterThan(0.21);
+        expect(totalRatio).toBeLessThan(0.28);
     });
 
     it('柱子位置左右对称（24% / 76%）、悬空尾尖离底 31%，卡托面落在约 42.5% 且不侵入底角圆弧', () => {

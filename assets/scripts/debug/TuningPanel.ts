@@ -14,11 +14,11 @@ import { TuningSlider } from './TuningSlider';
 
 const { ccclass } = _decorator;
 
-const TOGGLE_RECT = { x: 32, y: 592, width: 112, height: 48 } as const;
-const PANEL_X = 352;
-const PANEL_TOP_Y = 670;
+const TOGGLE_RECT = { x: 24, y: 596, width: 112, height: 48 } as const;
 const PANEL_WIDTH = 920;
 const PANEL_HEIGHT = 488;
+const PANEL_X = LayoutConfig.innerScreen.x + (LayoutConfig.innerScreen.width - PANEL_WIDTH) / 2;
+const PANEL_TOP_Y = LayoutConfig.innerScreen.y + LayoutConfig.innerScreen.height - 16;
 const PANEL_PADDING_X = 18;
 const COL_GAP = 24;
 const COL_WIDTH = (PANEL_WIDTH - PANEL_PADDING_X * 2 - COL_GAP) / 2; // 430
