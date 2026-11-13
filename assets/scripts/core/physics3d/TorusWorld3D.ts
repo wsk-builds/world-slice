@@ -5,11 +5,35 @@ import { PillarCollider3D } from './PillarCollider3D';
 import { TorusBody3D } from './TorusBody3D';
 import {
     Contact3D,
+    ContactKind3D,
     detectTorusPillarContacts,
     detectTorusTankContacts,
     detectTorusTorusContacts,
     TankBounds3D,
 } from './TorusContactDetect';
+
+export type CollisionKind3D = ContactKind3D;
+
+export interface CollisionEvent3D {
+    kind: CollisionKind3D;
+    bodyA: TorusBody3D;
+    bodyB: TorusBody3D | null;
+    pillarIndex: number;
+    normalImpulse: number;
+    approachSpeed: number;
+    px: number;
+    py: number;
+    pz: number;
+}
+
+export type CollisionListener3D = (event: CollisionEvent3D) => void;
+
+interface FrameCollisionSlot {
+    kind: CollisionKind3D;
+    idA: number;
+    idB: number;
+    event: CollisionEvent3D;
+}
 
 const SUB_STEPS = 2;
 const VELOCITY_ITERATIONS = 10;
@@ -37,7 +61,16 @@ export class TorusWorld3D {
     readonly bodies: TorusBody3D[] = [];
     readonly pillars: PillarCollider3D[] = [];
 
+    /** 触发碰撞事件回调所需的最小法向冲量阈值与最小碰撞接近速度（排除静止支撑微颤） */
+    collisionImpulseThreshold: number = GameConst.sfxCollisionMinImpulse;
+    collisionApproachSpeedThreshold: number = GameConst.sfxCollisionMinApproachSpeed;
+
     private readonly contacts: Contact3D[] = [];
+    private readonly collisionListeners: CollisionListener3D[] = [];
+    private collisionListenersSnapshot: CollisionListener3D[] = [];
+    private listenersDirty = false;
+    private readonly frameCollisions: FrameCollisionSlot[] = [];
+    private frameCollisionCount = 0;
 
     constructor(width = TankSpace.width, height = TankSpace.height) {
         const geom = calcRingPillarGeometry(width);
@@ -49,6 +82,24 @@ export class TorusWorld3D {
             wallFriction: 0.08,
             wallRestitution: 0.1,
         };
+    }
+
+    onCollision(cb: CollisionListener3D): () => void {
+        if (!this.collisionListeners.includes(cb)) {
+            this.collisionListeners.push(cb);
+            this.listenersDirty = true;
+        }
+        return () => {
+            this.offCollision(cb);
+        };
+    }
+
+    offCollision(cb: CollisionListener3D): void {
+        const idx = this.collisionListeners.indexOf(cb);
+        if (idx >= 0) {
+            this.collisionListeners.splice(idx, 1);
+            this.listenersDirty = true;
+        }
     }
 
     updateTankBounds(width = TankSpace.width, height = TankSpace.height): void {
@@ -77,6 +128,8 @@ export class TorusWorld3D {
 
     clearBodies(): void {
         this.bodies.length = 0;
+        this.frameCollisions.length = 0;
+        this.frameCollisionCount = 0;
     }
 
     addPillar(pillar: PillarCollider3D): PillarCollider3D {
@@ -90,11 +143,13 @@ export class TorusWorld3D {
         this.pillars.length = 0;
     }
 
-    /** 推进 dt 秒三维物理步（施力在步前已挂到各刚体，步末自动清空累积力） */
+    /** 推进 dt 秒三维物理步（施力在步前已挂到各刚体，步末自动清空累积力并派发去重后的有效碰撞事件） */
     step(dt: number): void {
         if (!(dt > 0) || this.bodies.length === 0) {
             return;
         }
+
+        this.frameCollisionCount = 0;
 
         const subDt = dt / SUB_STEPS;
         for (let sub = 0; sub < SUB_STEPS; sub++) {
@@ -103,6 +158,10 @@ export class TorusWorld3D {
 
         for (let i = 0; i < this.bodies.length; i++) {
             this.bodies[i].clearForces();
+        }
+
+        if (this.collisionListeners.length > 0 && this.frameCollisionCount > 0) {
+            this.dispatchFrameCollisions();
         }
     }
 
@@ -139,7 +198,7 @@ export class TorusWorld3D {
             if (a.type === 'dynamic') {
                 detectTorusTankContacts(a, this.tank, this.contacts);
                 for (let p = 0; p < this.pillars.length; p++) {
-                    detectTorusPillarContacts(a, this.pillars[p], this.contacts);
+                    detectTorusPillarContacts(a, this.pillars[p], this.contacts, p);
                 }
             }
             for (let j = i + 1; j < nBodies; j++) {
@@ -152,6 +211,9 @@ export class TorusWorld3D {
             this.prepareContacts();
             for (let iter = 0; iter < VELOCITY_ITERATIONS; iter++) {
                 this.solveVelocityConstraints();
+            }
+            if (this.collisionListeners.length > 0) {
+                this.recordSubstepCollisions();
             }
         }
 
@@ -188,7 +250,7 @@ export class TorusWorld3D {
                 if (a.type === 'dynamic') {
                     detectTorusTankContacts(a, this.tank, this.contacts);
                     for (let p = 0; p < this.pillars.length; p++) {
-                        detectTorusPillarContacts(a, this.pillars[p], this.contacts);
+                        detectTorusPillarContacts(a, this.pillars[p], this.contacts, p);
                     }
                 }
                 for (let j = i + 1; j < nBodies; j++) {
@@ -232,7 +294,107 @@ export class TorusWorld3D {
             const rvz = tempVelA.z - tempVelB.z;
             const vn = rvx * c.nx + rvy * c.ny + rvz * c.nz;
 
+            c.preImpactApproachSpeed = vn < 0 ? -vn : 0;
             c.velocityBias = vn < -RESTITUTION_SPEED_THRESHOLD ? -c.restitution * vn : 0;
+        }
+    }
+
+    private recordSubstepCollisions(): void {
+        for (let i = 0; i < this.contacts.length; i++) {
+            const c = this.contacts[i];
+            if (c.jnAcc <= 0) {
+                continue;
+            }
+
+            let idA = c.bodyA.id;
+            let idB = -1;
+            if (c.kind === 'ring' && c.bodyB) {
+                const otherId = c.bodyB.id;
+                if (otherId < idA) {
+                    idB = idA;
+                    idA = otherId;
+                } else {
+                    idB = otherId;
+                }
+            } else if (c.kind === 'pillar') {
+                idB = c.pillarIndex;
+            }
+
+            let slot: FrameCollisionSlot | null = null;
+            for (let k = 0; k < this.frameCollisionCount; k++) {
+                const candidate = this.frameCollisions[k];
+                if (candidate.kind === c.kind && candidate.idA === idA && candidate.idB === idB) {
+                    slot = candidate;
+                    break;
+                }
+            }
+
+            if (slot) {
+                slot.event.normalImpulse += c.jnAcc;
+                if (c.preImpactApproachSpeed > slot.event.approachSpeed) {
+                    slot.event.approachSpeed = c.preImpactApproachSpeed;
+                    slot.event.px = c.px;
+                    slot.event.py = c.py;
+                    slot.event.pz = c.pz;
+                }
+                continue;
+            }
+
+            if (this.frameCollisionCount < this.frameCollisions.length) {
+                slot = this.frameCollisions[this.frameCollisionCount];
+                slot.kind = c.kind;
+                slot.idA = idA;
+                slot.idB = idB;
+                const ev = slot.event;
+                ev.kind = c.kind;
+                ev.bodyA = c.bodyA;
+                ev.bodyB = c.bodyB;
+                ev.pillarIndex = c.pillarIndex;
+                ev.normalImpulse = c.jnAcc;
+                ev.approachSpeed = c.preImpactApproachSpeed;
+                ev.px = c.px;
+                ev.py = c.py;
+                ev.pz = c.pz;
+            } else {
+                slot = {
+                    kind: c.kind,
+                    idA,
+                    idB,
+                    event: {
+                        kind: c.kind,
+                        bodyA: c.bodyA,
+                        bodyB: c.bodyB,
+                        pillarIndex: c.pillarIndex,
+                        normalImpulse: c.jnAcc,
+                        approachSpeed: c.preImpactApproachSpeed,
+                        px: c.px,
+                        py: c.py,
+                        pz: c.pz,
+                    },
+                };
+                this.frameCollisions.push(slot);
+            }
+            this.frameCollisionCount++;
+        }
+    }
+
+    private dispatchFrameCollisions(): void {
+        if (this.listenersDirty) {
+            this.collisionListenersSnapshot = this.collisionListeners.slice();
+            this.listenersDirty = false;
+        }
+        const listeners = this.collisionListenersSnapshot;
+        const minImp = this.collisionImpulseThreshold;
+        const minSpeed = this.collisionApproachSpeedThreshold;
+
+        for (let i = 0; i < this.frameCollisionCount; i++) {
+            const ev = this.frameCollisions[i].event;
+            if (ev.normalImpulse < minImp || ev.approachSpeed < minSpeed) {
+                continue;
+            }
+            for (let j = 0; j < listeners.length; j++) {
+                listeners[j](ev);
+            }
         }
     }
 

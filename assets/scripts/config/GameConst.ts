@@ -235,6 +235,17 @@ export const GameConst = {
     calmSeaPillarDetourAccelPx: 240,
     calmSeaWaveCount: 5,
     calmSeaStreamCount: 7,
+
+    /** T020 灰盒音效与碰撞触发阈值配置 */
+    sfxMasterVolume: 0.85,
+    sfxMaxGlobalVoices: 8,
+    sfxCollisionMinImpulse: 8,
+    sfxCollisionMaxImpulse: 220,
+    sfxCollisionMinApproachSpeed: 22,
+    sfxCollisionMinVolumeScale: 0.18,
+    sfxJetLoopVolumeSmoothRate: 24,
+    sfxJetLoopOutflowThreshold: 0.01,
+    sfxReboundMinDepletion: 0.06,
 } as const;
 
 export interface RingPillarGeometry {

@@ -2,10 +2,14 @@ import { closestParamOnSegment3D, closestPointOnCircle3D, Vec3Like } from './Mat
 import { PillarCollider3D, TaperedCapsule3D } from './PillarCollider3D';
 import { TorusBody3D } from './TorusBody3D';
 
+export type ContactKind3D = 'tank' | 'pillar' | 'ring';
+
 /**
  * 碰撞接触点（法线 n 始终由 bodyB / 静物指向 bodyA，推动 bodyA 沿 +n 分离）。
  */
 export interface Contact3D {
+    kind: ContactKind3D;
+    pillarIndex: number;
     bodyA: TorusBody3D;
     bodyB: TorusBody3D | null;
     px: number;
@@ -28,6 +32,7 @@ export interface Contact3D {
     t2y: number;
     t2z: number;
     velocityBias: number;
+    preImpactApproachSpeed: number;
     jnAcc: number;
     jt1Acc: number;
     jt2Acc: number;
@@ -68,6 +73,8 @@ function pushContactDedup(
     out: Contact3D[],
     startIdx: number,
     maxPerPair: number,
+    kind: ContactKind3D,
+    pillarIndex: number,
     bodyA: TorusBody3D,
     bodyB: TorusBody3D | null,
     px: number,
@@ -114,6 +121,8 @@ function pushContactDedup(
     }
 
     out.push({
+        kind,
+        pillarIndex,
         bodyA,
         bodyB,
         px,
@@ -135,6 +144,7 @@ function pushContactDedup(
         t2y: 0,
         t2z: 0,
         velocityBias: 0,
+        preImpactApproachSpeed: 0,
         jnAcc: 0,
         jt1Acc: 0,
         jt2Acc: 0,
@@ -180,7 +190,7 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
 
         // 底墙 y = 0（避开左右圆弧底角内侧区，圆弧区由圆柱面统一处理）
         if (qy < rTube && qx >= cr && qx <= tank.width - cr) {
-            pushContactDedup(out, startIdx, 8, ring, null, qx, 0, qz, 0, 1, 0, rTube - qy, mu, rest);
+            pushContactDedup(out, startIdx, 8, 'tank', -1, ring, null, qx, 0, qz, 0, 1, 0, rTube - qy, mu, rest);
         }
         // 顶墙 y = height
         if (qy > tank.height - rTube) {
@@ -188,6 +198,8 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
                 out,
                 startIdx,
                 8,
+                'tank',
+                -1,
                 ring,
                 null,
                 qx,
@@ -204,7 +216,7 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
         // 左墙 x = 0（y >= cr，底部近角段零摩擦防贴墙滞留）
         if (qx < rTube && qy >= cr) {
             const sideMu = qy < cr * 1.6 ? 0 : mu;
-            pushContactDedup(out, startIdx, 8, ring, null, 0, qy, qz, 1, 0, 0, rTube - qx, sideMu, rest);
+            pushContactDedup(out, startIdx, 8, 'tank', -1, ring, null, 0, qy, qz, 1, 0, 0, rTube - qx, sideMu, rest);
         }
         // 右墙 x = width（y >= cr，底部近角段零摩擦防贴墙滞留）
         if (qx > tank.width - rTube && qy >= cr) {
@@ -213,6 +225,8 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
                 out,
                 startIdx,
                 8,
+                'tank',
+                -1,
                 ring,
                 null,
                 tank.width,
@@ -232,6 +246,8 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
                 out,
                 startIdx,
                 8,
+                'tank',
+                -1,
                 ring,
                 null,
                 qx,
@@ -251,6 +267,8 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
                 out,
                 startIdx,
                 8,
+                'tank',
+                -1,
                 ring,
                 null,
                 qx,
@@ -278,6 +296,8 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
                     out,
                     startIdx,
                     8,
+                    'tank',
+                    -1,
                     ring,
                     null,
                     cr - nx * cr,
@@ -307,6 +327,8 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
                     out,
                     startIdx,
                     8,
+                    'tank',
+                    -1,
                     ring,
                     null,
                     rcx - nx * cr,
@@ -327,7 +349,12 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
 /**
  * 2. 检测正圆环与三段式锥形十字柱各光滑圆台线段的接触点。
  */
-export function detectTorusPillarContacts(ring: TorusBody3D, pillar: PillarCollider3D, out: Contact3D[]): void {
+export function detectTorusPillarContacts(
+    ring: TorusBody3D,
+    pillar: PillarCollider3D,
+    out: Contact3D[],
+    pillarIndex = 0,
+): void {
     const outerR = ring.outerRadius;
     const maxHalfW = Math.max(pillar.crossHalfWidth, pillar.visualCrossHalfWidth);
     if (
@@ -343,7 +370,7 @@ export function detectTorusPillarContacts(ring: TorusBody3D, pillar: PillarColli
     const rest = Math.min(ring.restitution, pillar.restitution);
 
     for (let s = 0; s < pillar.segments.length; s++) {
-        detectTorusTaperedSegment(ring, pillar.segments[s], mu, rest, out);
+        detectTorusTaperedSegment(ring, pillar.segments[s], pillarIndex, mu, rest, out);
     }
 
     // 精确三维穿孔判定：仅当竖直柱轴真正穿过圆环三维内孔平面时，才启用卡托承接/防倒穿，外侧擦过或竖立贴靠的圈绝不挂卡
@@ -380,6 +407,8 @@ export function detectTorusPillarContacts(ring: TorusBody3D, pillar: PillarColli
                             out,
                             seatStart,
                             4,
+                            'pillar',
+                            pillarIndex,
                             ring,
                             null,
                             qx,
@@ -414,6 +443,8 @@ export function detectTorusPillarContacts(ring: TorusBody3D, pillar: PillarColli
                             out,
                             blockStart,
                             4,
+                            'pillar',
+                            pillarIndex,
                             ring,
                             null,
                             qx,
@@ -436,6 +467,7 @@ export function detectTorusPillarContacts(ring: TorusBody3D, pillar: PillarColli
 function detectTorusTaperedSegment(
     ring: TorusBody3D,
     seg: TaperedCapsule3D,
+    pillarIndex: number,
     mu: number,
     rest: number,
     out: Contact3D[],
@@ -519,7 +551,7 @@ function detectTorusTaperedSegment(
         const py = sy + ny * segR;
         const pz = sz + nz * segR;
 
-        pushContactDedup(out, startIdx, 4, ring, null, px, py, pz, nx, ny, nz, depth, mu, rest);
+        pushContactDedup(out, startIdx, 4, 'pillar', pillarIndex, ring, null, px, py, pz, nx, ny, nz, depth, mu, rest);
     }
 }
 
@@ -660,6 +692,6 @@ export function detectTorusTorusContacts(a: TorusBody3D, b: TorusBody3D, out: Co
         const py = scratchP2.y + ny * (b.tubeRadius - 0.5 * depth);
         const pz = scratchP2.z + nz * (b.tubeRadius - 0.5 * depth);
 
-        pushContactDedup(out, startIdx, 4, a, b, px, py, pz, nx, ny, nz, depth, mu, rest);
+        pushContactDedup(out, startIdx, 4, 'ring', -1, a, b, px, py, pz, nx, ny, nz, depth, mu, rest);
     }
 }

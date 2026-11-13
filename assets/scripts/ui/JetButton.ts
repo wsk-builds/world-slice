@@ -14,6 +14,11 @@ const CAP_CORNER_RADIUS = 28;
 const SHADOW_OFFSET_Y = -8;
 const DEPTH_SMOOTH_RATE = 45;
 
+export interface JetButtonCallbacks {
+    onPress?: (side: FlowSide, bladder: Bladder | null) => void;
+    onRelease?: (side: FlowSide, bladder: Bladder | null, fromSystem: boolean) => void;
+}
+
 /**
  * 左右软胶喷射键组件（GDD §2.2、§8，T008）：
  * - 触屏/鼠标按下的那一刻 0 延迟出水，两根手指按左右键互不影响；
@@ -38,9 +43,16 @@ export class JetButton extends Component {
     private visualDepth = 0;
     private lastDrawnDepth = -1;
     private lastDrawnPressed = false;
+    private onPressCb: JetButtonCallbacks['onPress'];
+    private onReleaseCb: JetButtonCallbacks['onRelease'];
 
     /** 在整机根节点下创建左右一对喷射键（位于 ShellView 之上，共用一个 Graphics） */
-    static createPair(parent: Node, leftBladder: Bladder, rightBladder: Bladder): [JetButton, JetButton] {
+    static createPair(
+        parent: Node,
+        leftBladder: Bladder,
+        rightBladder: Bladder,
+        callbacks?: JetButtonCallbacks,
+    ): [JetButton, JetButton] {
         const layerNode = new Node('JetButtons');
         layerNode.layer = Layers.Enum.UI_2D;
 
@@ -56,6 +68,8 @@ export class JetButton extends Component {
         const right = JetButton.createOne('right', LayoutConfig.rightJetBtn, rightBladder, sharedGfx, false);
         left.siblingButton = right;
         right.siblingButton = left;
+        left.setCallbacks(callbacks);
+        right.setCallbacks(callbacks);
 
         layerNode.addChild(left.node);
         layerNode.addChild(right.node);
@@ -110,11 +124,16 @@ export class JetButton extends Component {
         return this.bladder?.pressed ?? (this.activeTouchIds.size > 0 || this.keyHeld);
     }
 
+    setCallbacks(callbacks?: JetButtonCallbacks): void {
+        this.onPressCb = callbacks?.onPress;
+        this.onReleaseCb = callbacks?.onRelease;
+    }
+
     /** 暂停或结算期间禁用输入并立刻释放已按住的触点/按键 */
     setInputEnabled(enabled: boolean): void {
         this.inputEnabled = enabled;
         if (!enabled) {
-            this.releaseAllInputs();
+            this.releaseAllInputs(true);
         }
     }
 
@@ -168,13 +187,13 @@ export class JetButton extends Component {
         }
         event.propagationStopped = true;
         this.activeTouchIds.add(event.getID());
-        this.syncBladderInput();
+        this.syncBladderInput(false);
     };
 
     private onTouchEnd = (event: EventTouch): void => {
         event.propagationStopped = true;
         this.activeTouchIds.delete(event.getID());
-        this.syncBladderInput();
+        this.syncBladderInput(false);
     };
 
     private onKeyDown = (event: EventKeyboard): void => {
@@ -182,7 +201,7 @@ export class JetButton extends Component {
             return;
         }
         this.keyHeld = true;
-        this.syncBladderInput();
+        this.syncBladderInput(false);
     };
 
     private onKeyUp = (event: EventKeyboard): void => {
@@ -190,21 +209,27 @@ export class JetButton extends Component {
             return;
         }
         this.keyHeld = false;
-        this.syncBladderInput();
+        this.syncBladderInput(false);
     };
 
-    private releaseAllInputs = (): void => {
+    private releaseAllInputs = (fromSystem: unknown = true): void => {
         if (this.activeTouchIds.size === 0 && !this.keyHeld) {
             return;
         }
         this.activeTouchIds.clear();
         this.keyHeld = false;
-        this.syncBladderInput();
+        this.syncBladderInput(fromSystem !== false);
     };
 
-    private syncBladderInput(): void {
+    private syncBladderInput(fromSystem: boolean): void {
+        const wasPressed = this.bladder?.pressed ?? false;
         const down = this.activeTouchIds.size > 0 || this.keyHeld;
         this.bladder?.setPressed(down);
+        if (!wasPressed && down) {
+            this.onPressCb?.(this.side, this.bladder);
+        } else if (wasPressed && !down) {
+            this.onReleaseCb?.(this.side, this.bladder, fromSystem);
+        }
     }
 
     private stepVisual(dt: number): void {

@@ -15,6 +15,7 @@ import { Pillar } from './game/Pillar';
 import { PillarEnergyController } from './game/PillarEnergyController';
 import { RingLayer } from './game/RingLayer';
 import { ScoreJudge } from './game/ScoreJudge';
+import { Sfx } from './game/Sfx';
 import { Tank } from './game/Tank';
 import { TidePullSkill } from './game/TidePullSkill';
 import { CalmSeaSkill } from './game/CalmSeaSkill';
@@ -57,6 +58,10 @@ export class Boot extends Component implements LevelSessionHost {
     private leftJetBtn: JetButton | null = null;
     private rightJetBtn: JetButton | null = null;
     private hud: Hud | null = null;
+    private sfx: Sfx | null = null;
+    private leftBladder: Bladder | null = null;
+    private rightBladder: Bladder | null = null;
+    private lastCountdownTickSec = -1;
 
     private currentLevelOptions: LevelBootSessionOptions = {
         levelId: GameConst.defaultLevelId,
@@ -69,6 +74,10 @@ export class Boot extends Component implements LevelSessionHost {
 
     private unsubFeel: (() => void) | null = null;
     private unsubLevelStatus: (() => void) | null = null;
+    private unsubCollision: (() => void) | null = null;
+    private unsubLockSfx: (() => void) | null = null;
+    private unsubMatchSfx: (() => void) | null = null;
+    private unsubSkillSfx: (() => void) | null = null;
 
     onLoad(): void {
         applyFeel();
@@ -88,7 +97,11 @@ export class Boot extends Component implements LevelSessionHost {
 
         const leftBladder = new Bladder();
         const rightBladder = new Bladder();
+        this.leftBladder = leftBladder;
+        this.rightBladder = rightBladder;
         const flowField = new FlowField({ seed: GameConst.defaultLevelSeed });
+        const sfx = Sfx.attach(this.node);
+        this.sfx = sfx;
 
         // 2. 内屏节点（原点在机身内屏左下角），背景与气泡由 Camera 1 拍摄，圈柱在 3D 舞台由 Camera 2 拍摄
         const tankRoot = this.createTankRoot(machine);
@@ -124,6 +137,8 @@ export class Boot extends Component implements LevelSessionHost {
             this.calmSeaSkill?.reset();
             this.funnel?.reset();
             this.pillarEnergy?.reset(this.currentLevelOptions.pillarEnergy);
+            this.lastCountdownTickSec = -1;
+            this.sfx?.reset();
             this.levelState.reset({
                 durationSec: this.currentLevelOptions.durationSec,
                 initialFreeRings: 0,
@@ -146,8 +161,38 @@ export class Boot extends Component implements LevelSessionHost {
         this.calmSeaSkill = calmSeaSkill;
 
         stepper.onAfterStep(this.onAfterPhysicsStep);
-        this.unsubLevelStatus = this.levelState.onStatusChange(() => {
+        this.unsubCollision = stepper.world.onCollision((event) => {
+            if (!this.levelState.isPlaying) {
+                return;
+            }
+            if (event.kind === 'pillar') {
+                sfx.playCollision('pillar_rim', event.normalImpulse);
+            } else {
+                sfx.playCollision('ring_hit', event.normalImpulse);
+            }
+        });
+        this.unsubLockSfx = scoreJudge.onRingLocked(() => {
+            sfx.play('ring_lock');
+        });
+        this.unsubMatchSfx = scoreJudge.onMatchCleared((event) => {
+            sfx.play('match_clear', event.matchCount >= 3 ? 1 : 0.88);
+        });
+        this.unsubSkillSfx = pillarEnergy.onSkillTrigger((event) => {
+            sfx.play('energy_full');
+            sfx.play(event.side === 'left' ? 'skill_tide' : 'skill_calm');
+        });
+        this.unsubLevelStatus = this.levelState.onStatusChange((next) => {
             this.syncRuntimeWithLevelState();
+            if (next === 'won') {
+                this.sfx?.stopJetLoop();
+                this.sfx?.play('level_win');
+            } else if (next === 'lost') {
+                this.sfx?.stopJetLoop();
+                this.sfx?.play('level_lose');
+            } else if (next === 'ready') {
+                this.lastCountdownTickSec = -1;
+                this.sfx?.stopJetLoop();
+            }
         });
 
         // 体感参数修改后（T010 / T011）实时同步水流、气囊、3D 圈物理属性、双柱、已锁圈与海眼位置
@@ -162,7 +207,23 @@ export class Boot extends Component implements LevelSessionHost {
 
         // 3. 外壳绘制在最上层（Camera 3），内屏位置挖空；左右喷射键、HUD 与调参面板挂在外壳之上
         ShellView.create(machine);
-        const [leftJetBtn, rightJetBtn] = JetButton.createPair(machine, leftBladder, rightBladder);
+        const [leftJetBtn, rightJetBtn] = JetButton.createPair(machine, leftBladder, rightBladder, {
+            onPress: (_side, bladder) => {
+                if (!this.levelState.isPlaying || !bladder || bladder.output <= 0) {
+                    return;
+                }
+                sfx.play('jet_tap', 0.65 + 0.35 * bladder.output);
+            },
+            onRelease: (_side, bladder, fromSystem) => {
+                if (fromSystem || !this.levelState.isPlaying || !bladder) {
+                    return;
+                }
+                const depletion = 1 - bladder.reserve;
+                if (depletion >= GameConst.sfxReboundMinDepletion) {
+                    sfx.play('bladder_rebound', 0.45 + 0.55 * Math.min(1, depletion));
+                }
+            },
+        });
         this.leftJetBtn = leftJetBtn;
         this.rightJetBtn = rightJetBtn;
 
@@ -199,8 +260,30 @@ export class Boot extends Component implements LevelSessionHost {
         this.fitMachine();
     }
 
+    update(): void {
+        if (!this.sfx) {
+            return;
+        }
+        if (this.levelState.isPlaying) {
+            const leftOut = this.leftBladder?.output ?? 0;
+            const rightOut = this.rightBladder?.output ?? 0;
+            const maxOut = leftOut > rightOut ? leftOut : rightOut;
+            this.sfx.setJetLoopState(maxOut > GameConst.sfxJetLoopOutflowThreshold, maxOut);
+        } else {
+            this.sfx.stopJetLoop();
+        }
+    }
+
     onDestroy(): void {
         this.stepper?.offAfterStep(this.onAfterPhysicsStep);
+        this.unsubCollision?.();
+        this.unsubCollision = null;
+        this.unsubLockSfx?.();
+        this.unsubLockSfx = null;
+        this.unsubMatchSfx?.();
+        this.unsubMatchSfx = null;
+        this.unsubSkillSfx?.();
+        this.unsubSkillSfx = null;
         this.unsubLevelStatus?.();
         this.unsubLevelStatus = null;
         this.unsubFeel?.();
@@ -225,6 +308,8 @@ export class Boot extends Component implements LevelSessionHost {
             this.stepper.running = false;
             this.stepper.resetElapsed();
         }
+        this.lastCountdownTickSec = -1;
+        this.sfx?.reset();
         this.scoreJudge?.reset();
         this.tidePullSkill?.reset();
         this.calmSeaSkill?.reset();
@@ -275,6 +360,9 @@ export class Boot extends Component implements LevelSessionHost {
         if (this.stepper) {
             this.stepper.running = running;
         }
+        if (!running) {
+            this.sfx?.stopJetLoop();
+        }
         this.leftJetBtn?.setInputEnabled(running);
         this.rightJetBtn?.setInputEnabled(running);
         this.hud?.syncFromState(true);
@@ -301,6 +389,19 @@ export class Boot extends Component implements LevelSessionHost {
             }
         }
         this.levelState.step(dt, { freeRings, clearingRings, totalRings });
+
+        if (this.levelState.isPlaying && this.sfx) {
+            const rem = this.levelState.remainingSec;
+            const sec = rem > 0 ? Math.ceil(rem) : 0;
+            if (sec >= 1 && sec <= GameConst.countdownUrgentSec) {
+                if (sec !== this.lastCountdownTickSec) {
+                    this.lastCountdownTickSec = sec;
+                    this.sfx.play('countdown_tick');
+                }
+            } else if (sec > GameConst.countdownUrgentSec) {
+                this.lastCountdownTickSec = -1;
+            }
+        }
     };
 
     /** 创建内屏水缸根节点，原点位于内屏左下角。 */
