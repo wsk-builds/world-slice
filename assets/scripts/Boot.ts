@@ -6,6 +6,7 @@ import { FlowField } from './core/flow/FlowField';
 import { Bladder } from './core/input/Bladder';
 import { LevelState } from './core/level/LevelState';
 import { PhysicsDebugDraw } from './debug/PhysicsDebugDraw';
+import { HotZoneDebugDraw } from './debug/HotZoneDebugDraw';
 import { RingDebugSpawner } from './debug/RingDebugSpawner';
 import { TuningPanel } from './debug/TuningPanel';
 import { Funnel } from './game/Funnel';
@@ -17,11 +18,13 @@ import { RingLayer } from './game/RingLayer';
 import { ScoreJudge } from './game/ScoreJudge';
 import { Sfx } from './game/Sfx';
 import { Tank } from './game/Tank';
+import { Tappable } from './game/Tappable';
 import { TidePullSkill } from './game/TidePullSkill';
 import { CalmSeaSkill } from './game/CalmSeaSkill';
 import { WaterForce } from './game/WaterForce';
 import { Bubbles } from './render/Bubbles';
 import { RenderLayers, Stage3DRig } from './render/Stage3DRig';
+import { GlassTap } from './ui/GlassTap';
 import { Hud } from './ui/Hud';
 import { JetButton } from './ui/JetButton';
 import { ShellView } from './ui/ShellView';
@@ -54,6 +57,8 @@ export class Boot extends Component implements LevelSessionHost {
     private funnel: Funnel | null = null;
     private tidePullSkill: TidePullSkill | null = null;
     private calmSeaSkill: CalmSeaSkill | null = null;
+    private tappable: Tappable | null = null;
+    private glassTap: GlassTap | null = null;
     private levelLoader: LevelLoader | null = null;
     private leftJetBtn: JetButton | null = null;
     private rightJetBtn: JetButton | null = null;
@@ -129,6 +134,8 @@ export class Boot extends Component implements LevelSessionHost {
             rightPillar,
             scoreJudge,
         });
+        const tappable = Tappable.attach(tankRoot);
+        const glassTap = GlassTap.attach(tankRoot, { tappable, stepper });
         const ringSpawner = tankRoot.addComponent(RingDebugSpawner);
         ringSpawner.ringLayer = ringLayer;
         ringSpawner.scoreJudge = scoreJudge;
@@ -137,6 +144,7 @@ export class Boot extends Component implements LevelSessionHost {
             this.calmSeaSkill?.reset();
             this.funnel?.reset();
             this.pillarEnergy?.reset(this.currentLevelOptions.pillarEnergy);
+            this.glassTap?.clearRipples();
             this.lastCountdownTickSec = -1;
             this.sfx?.reset();
             this.levelState.reset({
@@ -149,6 +157,7 @@ export class Boot extends Component implements LevelSessionHost {
             this.syncRuntimeWithLevelState();
         };
         tankRoot.addComponent(PhysicsDebugDraw);
+        tankRoot.addComponent(HotZoneDebugDraw);
 
         this.stepper = stepper;
         this.bubbles = bubbles;
@@ -159,6 +168,8 @@ export class Boot extends Component implements LevelSessionHost {
         this.funnel = funnel;
         this.tidePullSkill = tidePullSkill;
         this.calmSeaSkill = calmSeaSkill;
+        this.tappable = tappable;
+        this.glassTap = glassTap;
 
         stepper.onAfterStep(this.onAfterPhysicsStep);
         this.unsubCollision = stepper.world.onCollision((event) => {
@@ -310,6 +321,7 @@ export class Boot extends Component implements LevelSessionHost {
         }
         this.lastCountdownTickSec = -1;
         this.sfx?.reset();
+        this.glassTap?.clearRipples();
         this.scoreJudge?.reset();
         this.tidePullSkill?.reset();
         this.calmSeaSkill?.reset();
@@ -365,6 +377,7 @@ export class Boot extends Component implements LevelSessionHost {
         }
         this.leftJetBtn?.setInputEnabled(running);
         this.rightJetBtn?.setInputEnabled(running);
+        this.glassTap?.setInputEnabled(running);
         this.hud?.syncFromState(true);
     }
 

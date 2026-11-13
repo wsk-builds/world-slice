@@ -1,14 +1,15 @@
 import {
     _decorator, BlockInputEvents, Color, Component, EventTouch, Graphics, Label, Layers, Node, sys, UITransform, Vec3,
 } from 'cc';
-import { DEFAULT_FEEL_CONFIG, FeelConfig } from '../config/FeelConfig';
+import { DEFAULT_FEEL_CONFIG, FeelConfig, FeelParams } from '../config/FeelConfig';
 import { GameConst } from '../config/GameConst';
+import { DEFAULT_HOT_ZONE_WIDTH_PCT, HotZones } from '../config/HotZones';
 import { LayoutConfig } from '../config/LayoutConfig';
 import { Palette } from '../config/Palette';
 import { applyFeel, offFeelApplied, onFeelApplied, SolvedFeel, SolvedFeelConfig } from '../core/flow/FeelSolver';
 import {
-    FEEL_SLIDER_SPECS, formatFeelCompactJson, formatFeelExportJson, hasFeelPreset, loadFeelPreset, PRESET_SLOTS,
-    PresetSlot, resolveDefaultStorage, saveFeelPreset, StorageLike,
+    FEEL_SLIDER_SPECS, formatFeelCompactJson, formatFeelExportJson, hasFeelPreset, HOT_ZONE_SLIDER_SPEC,
+    loadTuningPreset, PRESET_SLOTS, PresetSlot, resolveDefaultStorage, saveTuningPreset, StorageLike, TuningKey,
 } from './TuningPresets';
 import { TuningSlider } from './TuningSlider';
 
@@ -16,7 +17,7 @@ const { ccclass } = _decorator;
 
 const TOGGLE_RECT = { x: 24, y: 596, width: 112, height: 48 } as const;
 const PANEL_WIDTH = 920;
-const PANEL_HEIGHT = 488;
+const PANEL_HEIGHT = 544;
 const PANEL_X = LayoutConfig.innerScreen.x + (LayoutConfig.innerScreen.width - PANEL_WIDTH) / 2;
 const PANEL_TOP_Y = LayoutConfig.innerScreen.y + LayoutConfig.innerScreen.height - 16;
 const PANEL_PADDING_X = 18;
@@ -25,9 +26,9 @@ const COL_WIDTH = (PANEL_WIDTH - PANEL_PADDING_X * 2 - COL_GAP) / 2; // 430
 
 const EXPORT_BOX = {
     x: 18,
-    y: -234,
+    y: -252,
     width: PANEL_WIDTH - 36,
-    height: 214,
+    height: 224,
 } as const;
 
 const tempPos = new Vec3();
@@ -41,9 +42,9 @@ interface PanelButton {
 }
 
 /**
- * 灰盒实时调参面板（GDD §3.4，T011），受 GameConst.DEBUG 控制：
+ * 灰盒实时调参面板（GDD §3.4，T011 / T021），受 GameConst.DEBUG 控制：
  * - 左上角「调参」按钮开关面板，面板置于内屏区域不遮挡左右喷射键；
- * - 12 个中文体感滑块拖动立刻调用 applyFeel() 生效；
+ * - 12 个中文体感滑块拖动立刻调用 applyFeel() 生效，外加「热区宽度」滑块实时刷新 HotZones 与热区调试框；
  * - 支持 3 个本地预设槽位存取、恢复默认及导出 JSON 到控制台与面板显示；
  * - 整个面板（含开关按钮、全部滑块、按钮与导出框）共用同一个 Graphics 组件，省显存。
  */
@@ -64,6 +65,7 @@ export class TuningPanel extends Component {
     private storage: StorageLike | null = null;
     private syncingFromExternal = false;
     private lastExportJson = '';
+    private unsubHotZone: (() => void) | null = null;
 
     static create(machine: Node): TuningPanel {
         const node = new Node('TuningPanel');
@@ -99,10 +101,13 @@ export class TuningPanel extends Component {
             return;
         }
         onFeelApplied(this.handleExternalFeelApplied);
+        this.unsubHotZone = HotZones.onChange(this.handleExternalHotZoneChanged);
     }
 
     onDisable(): void {
         offFeelApplied(this.handleExternalFeelApplied);
+        this.unsubHotZone?.();
+        this.unsubHotZone = null;
     }
 
     private resolveStorage(): StorageLike | null {
@@ -232,10 +237,23 @@ export class TuningPanel extends Component {
             slider.node.setPosition(x, y, 0);
             this.sliders.push(slider);
         }
+
+        // 第 13 项：左右拇指热区宽度（T021，按 H 可实时预览）
+        const hzY = startY - 6 * TuningSlider.ROW_HEIGHT;
+        const hzSlider = TuningSlider.create(
+            body,
+            COL_WIDTH,
+            HOT_ZONE_SLIDER_SPEC,
+            HotZones.widthPct,
+            DEFAULT_HOT_ZONE_WIDTH_PCT,
+            (value) => this.onSliderChanged(HOT_ZONE_SLIDER_SPEC.key, value),
+        );
+        hzSlider.node.setPosition(PANEL_PADDING_X, hzY, 0);
+        this.sliders.push(hzSlider);
     }
 
     private buildPresetAndExportBar(body: Node): void {
-        const rowY = -430;
+        const rowY = -484;
         this.addLabel(
             body,
             'PresetHint',
@@ -304,9 +322,9 @@ export class TuningPanel extends Component {
         this.statusLabel = this.addLabel(
             body,
             'StatusLabel',
-            '拖动滑块立即生效；黄色竖线为默认值，不挡左右喷射键',
+            '拖动滑块立即生效；黄色竖线为默认值；按 H 显示左右热区',
             PANEL_PADDING_X,
-            -468,
+            -522,
             PANEL_WIDTH - PANEL_PADDING_X * 2,
             24,
             15,
@@ -375,15 +393,15 @@ export class TuningPanel extends Component {
             'ExportJsonContent',
             '',
             16,
-            -120,
+            -126,
             EXPORT_BOX.width - 32,
-            150,
-            16,
+            160,
+            15,
             Palette.labelPrimary,
             Label.HorizontalAlign.LEFT,
             0,
         );
-        this.exportJsonLabel.lineHeight = 24;
+        this.exportJsonLabel.lineHeight = 23;
     }
 
     private togglePanel(): void {
@@ -403,14 +421,18 @@ export class TuningPanel extends Component {
         this.redraw();
     }
 
-    private onSliderChanged(key: keyof typeof FeelConfig, value: number): void {
+    private onSliderChanged(key: TuningKey, value: number): void {
         if (this.syncingFromExternal) {
             return;
         }
         this.syncingFromExternal = true;
         try {
-            const solved = applyFeel({ [key]: value });
-            this.syncMetricsLabel(solved);
+            if (key === 'hotZoneWidthPct') {
+                HotZones.setWidthPct(value);
+            } else {
+                const solved = applyFeel({ [key]: value });
+                this.syncMetricsLabel(solved);
+            }
             if (this.exportBoxNode.active) {
                 this.refreshExportDisplay(false);
             }
@@ -421,30 +443,31 @@ export class TuningPanel extends Component {
     }
 
     private onSavePreset(slot: PresetSlot): void {
-        const ok = saveFeelPreset(slot, FeelConfig, this.storage);
+        const ok = saveTuningPreset(slot, FeelConfig, HotZones.widthPct, this.storage);
         this.setStatus(ok ? `已保存到本地预设 ${slot}（刷新后点「读${slot}」恢复）` : `保存预设 ${slot} 失败：本地存储不可用`);
         this.redraw();
     }
 
     private onLoadPreset(slot: PresetSlot): void {
-        const loaded = loadFeelPreset(slot, this.storage);
+        const loaded = loadTuningPreset(slot, this.storage);
         if (!loaded) {
             this.setStatus(`预设 ${slot} 为空，请先点击「存${slot}」`);
             return;
         }
-        this.applyFeelAndSync(loaded);
+        this.applyTuningAndSync(loaded.feel, loaded.hotZoneWidthPct);
         this.setStatus(`已读取预设 ${slot} 并立即生效`);
     }
 
     private resetToDefault(): void {
-        this.applyFeelAndSync(DEFAULT_FEEL_CONFIG);
-        this.setStatus('已恢复 GDD 默认体感参数');
+        this.applyTuningAndSync(DEFAULT_FEEL_CONFIG, DEFAULT_HOT_ZONE_WIDTH_PCT);
+        this.setStatus('已恢复 GDD 默认体感参数与热区宽度');
     }
 
-    private applyFeelAndSync(nextFeel: Readonly<typeof DEFAULT_FEEL_CONFIG>): void {
+    private applyTuningAndSync(nextFeel: Readonly<FeelParams>, hotZoneWidthPct: number): void {
         this.syncingFromExternal = true;
         try {
             const solved = applyFeel({ ...nextFeel });
+            HotZones.setWidthPct(hotZoneWidthPct);
             this.syncAllSliders();
             this.syncMetricsLabel(solved);
             if (this.exportBoxNode.active) {
@@ -468,9 +491,24 @@ export class TuningPanel extends Component {
         this.redraw();
     };
 
+    private handleExternalHotZoneChanged = (): void => {
+        if (this.syncingFromExternal) {
+            return;
+        }
+        this.syncAllSliders();
+        if (this.exportBoxNode?.active) {
+            this.refreshExportDisplay(false);
+        }
+        this.redraw();
+    };
+
     private syncAllSliders(): void {
         for (const slider of this.sliders) {
-            slider.setValue(FeelConfig[slider.key]);
+            if (slider.key === 'hotZoneWidthPct') {
+                slider.setValue(HotZones.widthPct);
+            } else {
+                slider.setValue(FeelConfig[slider.key]);
+            }
         }
     }
 
@@ -488,9 +526,9 @@ export class TuningPanel extends Component {
     }
 
     private refreshExportDisplay(logAndCopy: boolean): void {
-        const prettyJson = formatFeelExportJson(FeelConfig);
+        const prettyJson = formatFeelExportJson(FeelConfig, HotZones.widthPct);
         this.lastExportJson = prettyJson;
-        this.exportJsonLabel.string = formatFeelCompactJson(FeelConfig);
+        this.exportJsonLabel.string = formatFeelCompactJson(FeelConfig, HotZones.widthPct);
 
         if (logAndCopy) {
             console.log(`[调参面板] 当前体感参数 JSON：\n${prettyJson}`);
@@ -499,7 +537,7 @@ export class TuningPanel extends Component {
     }
 
     private copyLastExportToClipboard(fromExport = false): void {
-        const text = this.lastExportJson || formatFeelExportJson(FeelConfig);
+        const text = this.lastExportJson || formatFeelExportJson(FeelConfig, HotZones.widthPct);
         const copied = tryCopyClipboard(text);
         if (copied) {
             this.setStatus(fromExport ? '已打印到控制台、显示在面板并尝试复制 JSON' : '已复制 JSON 到剪贴板');

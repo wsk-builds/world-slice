@@ -1,17 +1,22 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_FEEL_CONFIG, FeelConfig, FeelParams } from '../../assets/scripts/config/FeelConfig';
+import { DEFAULT_HOT_ZONE_WIDTH_PCT, HotZones } from '../../assets/scripts/config/HotZones';
 import { applyFeel, SolvedFeelConfig } from '../../assets/scripts/core/flow/FeelSolver';
 import {
+    ALL_TUNING_SLIDER_SPECS,
     deleteFeelPreset,
     FEEL_SLIDER_SPECS,
     formatFeelCompactJson,
     formatFeelExportJson,
     getFeelSliderSpec,
     hasFeelPreset,
+    HOT_ZONE_SLIDER_SPEC,
     loadFeelPreset,
+    loadTuningPreset,
     PRESET_SLOTS,
     sanitizeFeelParams,
     saveFeelPreset,
+    saveTuningPreset,
     snapSliderValue,
     StorageLike,
 } from '../../assets/scripts/debug/TuningPresets';
@@ -32,6 +37,7 @@ function createMemoryStorage(): StorageLike {
 describe('TuningPresets', () => {
     afterEach(() => {
         applyFeel({ ...DEFAULT_FEEL_CONFIG });
+        HotZones.reset();
     });
 
     it('覆盖全部 12 个 FeelParams 体感参数且默认起始值落在滑块范围内', () => {
@@ -115,5 +121,30 @@ describe('TuningPresets', () => {
         const compactParsed = JSON.parse(formatFeelCompactJson(FeelConfig)) as FeelParams;
         expect(prettyParsed).toEqual(custom);
         expect(compactParsed).toEqual(custom);
+    });
+
+    it('支持热区宽度滑块（10%–45%，默认 22%）一并存取预设与导出 JSON', () => {
+        expect(ALL_TUNING_SLIDER_SPECS).toHaveLength(13);
+        expect(HOT_ZONE_SLIDER_SPEC.key).toBe('hotZoneWidthPct');
+        expect(snapSliderValue(DEFAULT_HOT_ZONE_WIDTH_PCT, HOT_ZONE_SLIDER_SPEC)).toBe(22);
+
+        const storage = createMemoryStorage();
+        const custom: FeelParams = { ...DEFAULT_FEEL_CONFIG, sinkSec: 2.5 };
+        expect(saveTuningPreset(2, custom, 28, storage)).toBe(true);
+
+        const loaded = loadTuningPreset(2, storage);
+        expect(loaded).not.toBeNull();
+        expect(loaded?.feel).toEqual(custom);
+        expect(loaded?.hotZoneWidthPct).toBe(28);
+
+        // 老版本不含 hotZoneWidthPct 的预设读取时回退默认 22%
+        expect(saveFeelPreset(3, custom, storage)).toBe(true);
+        expect(loadTuningPreset(3, storage)?.hotZoneWidthPct).toBe(22);
+
+        const pretty = JSON.parse(formatFeelExportJson(custom, 28)) as FeelParams & { hotZoneWidthPct: number };
+        const compact = JSON.parse(formatFeelCompactJson(custom, 28)) as FeelParams & { hotZoneWidthPct: number };
+        expect(pretty.hotZoneWidthPct).toBe(28);
+        expect(compact.hotZoneWidthPct).toBe(28);
+        expect(pretty.sinkSec).toBe(2.5);
     });
 });

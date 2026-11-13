@@ -1,6 +1,6 @@
 import { _decorator, Component, EventTouch, Graphics, Label, Layers, Node, UITransform, Vec3 } from 'cc';
 import { Palette } from '../config/Palette';
-import { FeelSliderSpec, formatFeelValue, snapSliderValue } from './TuningPresets';
+import { formatFeelValue, snapSliderValue, TuningKey, TuningSliderSpec } from './TuningPresets';
 
 const { ccclass } = _decorator;
 
@@ -24,7 +24,7 @@ export type SliderChangeHandler = (value: number) => void;
 export class TuningSlider extends Component {
     static readonly ROW_HEIGHT = 58;
 
-    private spec!: FeelSliderSpec;
+    private spec!: TuningSliderSpec;
     private value = 0;
     private defaultValue = 0;
     private onChange: SliderChangeHandler | null = null;
@@ -39,7 +39,7 @@ export class TuningSlider extends Component {
     static create(
         parent: Node,
         width: number,
-        spec: FeelSliderSpec,
+        spec: TuningSliderSpec,
         value: number,
         defaultValue: number,
         onChange: SliderChangeHandler,
@@ -62,7 +62,7 @@ export class TuningSlider extends Component {
         return slider;
     }
 
-    get key(): FeelSliderSpec['key'] {
+    get key(): TuningKey {
         return this.spec.key;
     }
 

@@ -133,4 +133,16 @@ export const Palette = {
         accentText: hex('#76E5DC'),
         mutedText: hex('#93A4B5'),
     },
+
+    /** T021 敲玻璃震纹与拇指热区调试配色 */
+    glassTap: {
+        rippleOuter: hex('#A8F5FF', 0.86),
+        rippleInner: hex('#FFFFFF', 0.92),
+        rippleHitAccent: hex('#FFE066', 0.92),
+    },
+    hotZone: {
+        fill: hex('#64DFDF', 0.16),
+        border: hex('#64DFDF', 0.78),
+        boundary: hex('#FFE066', 0.85),
+    },
 } as const;

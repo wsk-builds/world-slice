@@ -246,6 +246,13 @@ export const GameConst = {
     sfxJetLoopVolumeSmoothRate: 24,
     sfxJetLoopOutflowThreshold: 0.01,
     sfxReboundMinDepletion: 0.06,
+
+    /** T021 敲玻璃震纹与可点对象放大倍率配置 */
+    tappableHitScale: 1.4,
+    glassTapRipplePoolSize: 12,
+    glassTapRippleDurationSec: 0.42,
+    glassTapRippleStartRadiusPx: 10,
+    glassTapRippleEndRadiusPx: 56,
 } as const;
 
 export interface RingPillarGeometry {
