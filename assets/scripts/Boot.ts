@@ -11,7 +11,7 @@ export class Boot extends Component {
         labelNode.addComponent(UITransform);
 
         const label = labelNode.addComponent(Label);
-        label.string = '套了个圈 · 工程就绪';
+        label.string = '套圈大冒险 · 工程就绪';
         label.fontSize = 42;
         label.lineHeight = 56;
         label.color = new Color(235, 240, 245, 255);
