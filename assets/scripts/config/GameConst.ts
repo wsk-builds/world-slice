@@ -185,6 +185,82 @@ export const GameConst = {
 
     /** 柱尖 3D 灵珠底部相对柱尖顶点的留隙（像素） */
     pillarOrbTipGapPx: 2.0,
+
+    /** T018 左柱技能「潮引」：漏斗增益与下限保证（确保低宽容度或 0 宽容度下依然显著吸纳） */
+    tidePullFunnelRadiusScale: 2.5,
+    tidePullFunnelMinRadiusPx: 165,
+    tidePullFunnelMaxTiltDeg: 72,
+    tidePullFunnelPullScale: 2.6,
+    tidePullFunnelMinPullAccel: 2600,
+    tidePullFunnelMinAlignRate: 11.5,
+    tidePullFunnelMaxVy: 95,
+
+    /** T018 左柱技能「潮引」：FlowField 漩流场参数 */
+    tidePullSwirlRadiusPx: 250,
+    tidePullSwirlInwardSpeed: 240,
+    tidePullSwirlTangentSpeed: 105,
+    tidePullSwirlDownwardSpeed: 0,
+    tidePullSwirlCoreRadiusPx: 22,
+    tidePullSwirlFocusOffsetY: 24,
+
+    /** T018 左柱技能「潮引」：灰盒柱尖漩流线视觉参数 */
+    tidePullVortexArmCount: 3,
+    tidePullVortexMaxRadiusPx: 118,
+    tidePullVortexMinRadiusPx: 14,
+    tidePullVortexSpinRadPerSec: 4.2,
+
+    /** T019 右柱技能「定海」：暖流托浮、平息乱流与水平归中参数 */
+    calmSeaTargetAboveTipPx: 36,
+    calmSeaTopMarginPx: 26,
+    calmSeaWarmFlowSpeed: 135,
+    calmSeaWarmFlowTaperSpanPx: 65,
+    calmSeaTurbulenceScale: 0.06,
+    calmSeaCirculationScale: 0.08,
+    calmSeaRiseMaxSpeedPx: 145,
+    calmSeaRiseMinSpeedPx: 26,
+    calmSeaRiseSlope: 1.5,
+    calmSeaRiseGain: 8.5,
+    calmSeaMaxRiseAccelPx: 1400,
+    calmSeaOvershootDampRate: 7.0,
+    calmSeaSlowSinkSpeedPx: 10,
+    calmSeaPillarSettleSinkSpeedPx: 30,
+    calmSeaHighDescentSpeedPx: 32,
+    calmSeaBandTrackRate: 14.0,
+    calmSeaMaxBrakeDownRatio: 0.45,
+    calmSeaReLiftOffsetPx: 32,
+    calmSeaAlignRate: 6.5,
+    calmSeaSpinDampRate: 3.2,
+    calmSeaZCenterStiffness: 18.0,
+    calmSeaZCenterDamping: 8.5,
+    calmSeaPillarDetourAccelPx: 240,
+    calmSeaWaveCount: 5,
+    calmSeaStreamCount: 7,
+
+    /** T020 灰盒音效与碰撞触发阈值配置 */
+    sfxMasterVolume: 0.85,
+    sfxMaxGlobalVoices: 8,
+    sfxCollisionMinImpulse: 8,
+    sfxCollisionMaxImpulse: 220,
+    sfxCollisionMinApproachSpeed: 22,
+    sfxCollisionMinVolumeScale: 0.18,
+    sfxJetLoopVolumeSmoothRate: 24,
+    sfxJetLoopOutflowThreshold: 0.01,
+    sfxReboundMinDepletion: 0.06,
+
+    /** T021 敲玻璃震纹与可点对象放大倍率配置 */
+    tappableHitScale: 1.4,
+    glassTapRipplePoolSize: 12,
+    glassTapRippleDurationSec: 0.42,
+    glassTapRippleStartRadiusPx: 10,
+    glassTapRippleEndRadiusPx: 56,
+
+    /** T022 拖拽摆关器配置 */
+    editorMinDurationSec: 10,
+    editorMaxDurationSec: 300,
+    editorDurationStepSec: 5,
+    editorWallPadPx: 5,
+    editorRingHitPadPx: 14,
+    editorDefaultHitRadiusPx: 44,
 } as const;
 
 export interface RingPillarGeometry {

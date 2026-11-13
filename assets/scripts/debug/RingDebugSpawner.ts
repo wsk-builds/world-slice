@@ -1,4 +1,4 @@
-import { _decorator, Component, EventKeyboard, EventTouch, Input, input, KeyCode, Node, UITransform, Vec3 } from 'cc';
+import { _decorator, Component, EventKeyboard, EventTouch, Game, game, Input, input, KeyCode, Node, UITransform, Vec3 } from 'cc';
 import { GameConst } from '../config/GameConst';
 import { DEBUG_RING_SLOTS, ringSpecLabel, RingSpec } from '../core/rings/RingKinds';
 import { PhysicsStepper } from '../game/PhysicsStepper';
@@ -11,7 +11,7 @@ const tempVec3 = new Vec3();
 
 /**
  * 灰盒调试放圈组件（受 GameConst.DEBUG 控制）：
- * - 点击内屏在点击处放一个当前选中的圈
+ * - 按住 Shift 再点击内屏在点击处放一个当前选中的圈（普通点击归敲玻璃 GlassTap）
  * - 数字键 1–7 切换圈种（1红 2绿 3蓝 4橙 5小金环 6铁圈 7木圈）
  * - R 键清空所有圈
  */
@@ -24,9 +24,19 @@ export class RingDebugSpawner extends Component {
     private slotIndex = 0;
     private tankTransform: UITransform | null = null;
     private stepper: PhysicsStepper | null = null;
+    private inputEnabled = true;
+    private shiftLeftHeld = false;
+    private shiftRightHeld = false;
 
     get currentSpec(): RingSpec {
         return DEBUG_RING_SLOTS[this.slotIndex];
+    }
+
+    setInputEnabled(enabled: boolean): void {
+        this.inputEnabled = enabled;
+        if (!enabled) {
+            this.clearShiftState();
+        }
     }
 
     onLoad(): void {
@@ -40,15 +50,37 @@ export class RingDebugSpawner extends Component {
         }
         this.node.on(Node.EventType.TOUCH_START, this.onTouchStart, this);
         input.on(Input.EventType.KEY_DOWN, this.onKeyDown, this);
+        input.on(Input.EventType.KEY_UP, this.onKeyUp, this);
+        game.on(Game.EVENT_HIDE, this.clearShiftState, this);
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+            window.addEventListener('blur', this.clearShiftState);
+        }
+        game.canvas?.addEventListener?.('blur', this.clearShiftState);
     }
 
     onDisable(): void {
         this.node.off(Node.EventType.TOUCH_START, this.onTouchStart, this);
         input.off(Input.EventType.KEY_DOWN, this.onKeyDown, this);
+        input.off(Input.EventType.KEY_UP, this.onKeyUp, this);
+        game.off(Game.EVENT_HIDE, this.clearShiftState, this);
+        if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+            window.removeEventListener('blur', this.clearShiftState);
+        }
+        game.canvas?.removeEventListener?.('blur', this.clearShiftState);
+        this.clearShiftState();
     }
 
+    private isShiftHeld(): boolean {
+        return this.shiftLeftHeld || this.shiftRightHeld;
+    }
+
+    private clearShiftState = (): void => {
+        this.shiftLeftHeld = false;
+        this.shiftRightHeld = false;
+    };
+
     private onTouchStart = (event: EventTouch): void => {
-        if (!this.ringLayer || !this.tankTransform || (this.stepper && !this.stepper.running)) {
+        if (!this.inputEnabled || !this.isShiftHeld() || !this.ringLayer || !this.tankTransform || (this.stepper && !this.stepper.running)) {
             return;
         }
         const uiLoc = event.getUILocation();
@@ -57,6 +89,17 @@ export class RingDebugSpawner extends Component {
     };
 
     private onKeyDown = (event: EventKeyboard): void => {
+        if (!this.inputEnabled) {
+            return;
+        }
+        if (event.keyCode === KeyCode.SHIFT_LEFT) {
+            this.shiftLeftHeld = true;
+            return;
+        }
+        if (event.keyCode === KeyCode.SHIFT_RIGHT) {
+            this.shiftRightHeld = true;
+            return;
+        }
         const slot = this.keyCodeToSlot(event.keyCode);
         if (slot >= 0) {
             this.slotIndex = slot;
@@ -68,6 +111,14 @@ export class RingDebugSpawner extends Component {
             this.scoreJudge?.reset();
             this.onClearAll?.();
             console.log('[RingDebug] 已清空所有圈');
+        }
+    };
+
+    private onKeyUp = (event: EventKeyboard): void => {
+        if (event.keyCode === KeyCode.SHIFT_LEFT) {
+            this.shiftLeftHeld = false;
+        } else if (event.keyCode === KeyCode.SHIFT_RIGHT) {
+            this.shiftRightHeld = false;
         }
     };
 

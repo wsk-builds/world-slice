@@ -354,4 +354,104 @@ describe('TorusWorld3D 真 3D 圆环翻转、锥形十字柱与立体堆叠', ()
         // 落定后单帧位移严格小于 0.5px，无任何位置修正过推或锁定瞬移跳动
         expect(maxUpJumpAfterSettle).toBeLessThan(0.5);
     });
+
+    it('onCollision 区分圈撞缸壁/圈撞圈 vs 圈碰柱，合并 120Hz 双子步多接触点，并过滤静止支撑微颤', () => {
+        const world = new TorusWorld3D();
+        const pillarX = TankSpace.pctToPxX(24);
+        const pillarBottomY = TankSpace.pctToPxY(31);
+        const pillar = world.addPillar(new PillarCollider3D(pillarX, pillarBottomY, geom));
+
+        const events: Array<{ kind: string; pillarIndex: number; normalImpulse: number }> = [];
+        const unsub = world.onCollision((ev) => {
+            events.push({
+                kind: ev.kind,
+                pillarIndex: ev.pillarIndex,
+                normalImpulse: ev.normalImpulse,
+            });
+        });
+
+        // 1. 圈落撞缸底：单步内多接触点与双子步合并去重，触地帧仅触发 1 次 tank 回调，静止后不再误触发
+        const floorRing = world.addBody(
+            new TorusBody3D({
+                x: TankSpace.width * 0.5,
+                y: tubeR + 22,
+                z: 0,
+                majorRadius: majorR,
+                tubeRadius: tubeR,
+            }),
+        );
+        floorRing.vy = -180;
+
+        let impactStep = -1;
+        let impactEventsThisStep = 0;
+        for (let step = 0; step < 90; step++) {
+            const before = events.length;
+            floorRing.applyCentralForce(0, -520 * floorRing.mass, 0);
+            world.step(1 / 60);
+            const delta = events.length - before;
+            if (delta > 0 && impactStep < 0) {
+                impactStep = step;
+                impactEventsThisStep = delta;
+            }
+            // 落定静止后（后 40 步）不应再触发任何静止支撑噪声回调
+            if (step >= 50) {
+                expect(delta).toBe(0);
+            }
+        }
+        expect(impactStep).toBeGreaterThanOrEqual(0);
+        expect(impactEventsThisStep).toBe(1);
+        expect(events.some((e) => e.kind === 'tank' && e.normalImpulse >= world.collisionImpulseThreshold)).toBe(true);
+
+        // 2. 圈撞击已静止休眠圈（static）应触发 1 次 ring 碰撞，而两个 static 圈互不触发
+        events.length = 0;
+        floorRing.type = 'static';
+        const hitRing = world.addBody(
+            new TorusBody3D({
+                x: floorRing.x,
+                y: floorRing.y + tubeR * 2 + 18,
+                z: 0,
+                majorRadius: majorR,
+                tubeRadius: tubeR,
+            }),
+        );
+        hitRing.vy = -210;
+        for (let step = 0; step < 30; step++) {
+            const before = events.length;
+            hitRing.applyCentralForce(0, -520 * hitRing.mass, 0);
+            world.step(1 / 60);
+            expect(events.length - before).toBeLessThanOrEqual(1);
+        }
+        expect(events.some((e) => e.kind === 'ring')).toBe(true);
+
+        // 3. 圈擦撞柱杆应触发 pillar 回调且带对应 pillarIndex
+        events.length = 0;
+        world.clearBodies();
+        const rimRing = world.addBody(
+            new TorusBody3D({
+                x: pillarX + majorR + pillar.tipRadius * 0.5,
+                y: pillar.tipY + 26,
+                z: 0,
+                majorRadius: majorR,
+                tubeRadius: tubeR,
+            }),
+        );
+        rimRing.vy = -220;
+        for (let step = 0; step < 30; step++) {
+            const before = events.length;
+            rimRing.applyCentralForce(0, -520 * rimRing.mass, 0);
+            world.step(1 / 60);
+            expect(events.length - before).toBeLessThanOrEqual(1);
+        }
+        expect(events.some((e) => e.kind === 'pillar' && e.pillarIndex === 0)).toBe(true);
+
+        // 4. 取消订阅后不再收到任何碰撞事件
+        events.length = 0;
+        unsub();
+        rimRing.y = tubeR + 20;
+        rimRing.vy = -240;
+        for (let step = 0; step < 20; step++) {
+            world.step(1 / 60);
+        }
+        expect(events).toHaveLength(0);
+    });
 });

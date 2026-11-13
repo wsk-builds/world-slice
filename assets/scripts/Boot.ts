@@ -1,12 +1,17 @@
 import { _decorator, Component, Node, screen, UITransform, view } from 'cc';
+import { FeelConfig } from './config/FeelConfig';
 import { GameConst } from './config/GameConst';
 import { calcMachineScale, LayoutConfig } from './config/LayoutConfig';
 import { applyFeel, onFeelApplied } from './core/flow/FeelSolver';
 import { FlowField } from './core/flow/FlowField';
 import { Bladder } from './core/input/Bladder';
+import { resolveLevelRingLayout } from './core/level/LevelRingLayout';
 import { LevelState } from './core/level/LevelState';
 import { PhysicsDebugDraw } from './debug/PhysicsDebugDraw';
+import { HotZoneDebugDraw } from './debug/HotZoneDebugDraw';
+import { LevelEditor, LevelEditorExitInfo } from './debug/LevelEditor';
 import { RingDebugSpawner } from './debug/RingDebugSpawner';
+import { SoakBot } from './debug/SoakBot';
 import { TuningPanel } from './debug/TuningPanel';
 import { Funnel } from './game/Funnel';
 import { LevelLoader, LevelSessionHost } from './game/LevelLoader';
@@ -15,10 +20,15 @@ import { Pillar } from './game/Pillar';
 import { PillarEnergyController } from './game/PillarEnergyController';
 import { RingLayer } from './game/RingLayer';
 import { ScoreJudge } from './game/ScoreJudge';
+import { Sfx } from './game/Sfx';
 import { Tank } from './game/Tank';
+import { Tappable } from './game/Tappable';
+import { TidePullSkill } from './game/TidePullSkill';
+import { CalmSeaSkill } from './game/CalmSeaSkill';
 import { WaterForce } from './game/WaterForce';
 import { Bubbles } from './render/Bubbles';
 import { RenderLayers, Stage3DRig } from './render/Stage3DRig';
+import { GlassTap } from './ui/GlassTap';
 import { Hud } from './ui/Hud';
 import { JetButton } from './ui/JetButton';
 import { ShellView } from './ui/ShellView';
@@ -49,10 +59,23 @@ export class Boot extends Component implements LevelSessionHost {
     private scoreJudge: ScoreJudge | null = null;
     private pillarEnergy: PillarEnergyController | null = null;
     private funnel: Funnel | null = null;
+    private tidePullSkill: TidePullSkill | null = null;
+    private calmSeaSkill: CalmSeaSkill | null = null;
+    private tappable: Tappable | null = null;
+    private glassTap: GlassTap | null = null;
     private levelLoader: LevelLoader | null = null;
     private leftJetBtn: JetButton | null = null;
     private rightJetBtn: JetButton | null = null;
     private hud: Hud | null = null;
+    private sfx: Sfx | null = null;
+    private leftBladder: Bladder | null = null;
+    private rightBladder: Bladder | null = null;
+    private ringSpawner: RingDebugSpawner | null = null;
+    private tuningPanel: TuningPanel | null = null;
+    private levelEditor: LevelEditor | null = null;
+    private soakBot: SoakBot | null = null;
+    private editorActive = false;
+    private lastCountdownTickSec = -1;
 
     private currentLevelOptions: LevelBootSessionOptions = {
         levelId: GameConst.defaultLevelId,
@@ -65,6 +88,10 @@ export class Boot extends Component implements LevelSessionHost {
 
     private unsubFeel: (() => void) | null = null;
     private unsubLevelStatus: (() => void) | null = null;
+    private unsubCollision: (() => void) | null = null;
+    private unsubLockSfx: (() => void) | null = null;
+    private unsubMatchSfx: (() => void) | null = null;
+    private unsubSkillSfx: (() => void) | null = null;
 
     onLoad(): void {
         applyFeel();
@@ -84,7 +111,11 @@ export class Boot extends Component implements LevelSessionHost {
 
         const leftBladder = new Bladder();
         const rightBladder = new Bladder();
+        this.leftBladder = leftBladder;
+        this.rightBladder = rightBladder;
         const flowField = new FlowField({ seed: GameConst.defaultLevelSeed });
+        const sfx = Sfx.attach(this.node);
+        this.sfx = sfx;
 
         // 2. 内屏节点（原点在机身内屏左下角），背景与气泡由 Camera 1 拍摄，圈柱在 3D 舞台由 Camera 2 拍摄
         const tankRoot = this.createTankRoot(machine);
@@ -97,11 +128,34 @@ export class Boot extends Component implements LevelSessionHost {
         const scoreJudge = ScoreJudge.attach(tankRoot, leftPillar, rightPillar, ringLayer);
         const pillarEnergy = PillarEnergyController.attach(tankRoot, leftPillar, rightPillar, scoreJudge);
         const funnel = Funnel.attach(tankRoot, leftPillar, rightPillar, ringLayer, scoreJudge);
+        const tidePullSkill = TidePullSkill.attach(tankRoot, {
+            flowField,
+            funnel,
+            energyController: pillarEnergy,
+            scoreJudge,
+            leftPillar,
+        });
+        const calmSeaSkill = CalmSeaSkill.attach(tankRoot, {
+            flowField,
+            energyController: pillarEnergy,
+            ringLayer,
+            leftPillar,
+            rightPillar,
+            scoreJudge,
+        });
+        const tappable = Tappable.attach(tankRoot);
+        const glassTap = GlassTap.attach(tankRoot, { tappable, stepper });
         const ringSpawner = tankRoot.addComponent(RingDebugSpawner);
         ringSpawner.ringLayer = ringLayer;
         ringSpawner.scoreJudge = scoreJudge;
         ringSpawner.onClearAll = () => {
+            this.tidePullSkill?.reset();
+            this.calmSeaSkill?.reset();
+            this.funnel?.reset();
             this.pillarEnergy?.reset(this.currentLevelOptions.pillarEnergy);
+            this.glassTap?.clearRipples();
+            this.lastCountdownTickSec = -1;
+            this.sfx?.reset();
             this.levelState.reset({
                 durationSec: this.currentLevelOptions.durationSec,
                 initialFreeRings: 0,
@@ -110,8 +164,10 @@ export class Boot extends Component implements LevelSessionHost {
                 this.levelState.start();
             }
             this.syncRuntimeWithLevelState();
+            this.soakBot?.onRoundLoaded(this.currentLevelOptions.levelId ?? GameConst.defaultLevelId);
         };
         tankRoot.addComponent(PhysicsDebugDraw);
+        tankRoot.addComponent(HotZoneDebugDraw);
 
         this.stepper = stepper;
         this.bubbles = bubbles;
@@ -120,10 +176,45 @@ export class Boot extends Component implements LevelSessionHost {
         this.scoreJudge = scoreJudge;
         this.pillarEnergy = pillarEnergy;
         this.funnel = funnel;
+        this.tidePullSkill = tidePullSkill;
+        this.calmSeaSkill = calmSeaSkill;
+        this.tappable = tappable;
+        this.glassTap = glassTap;
+        this.ringSpawner = ringSpawner;
 
         stepper.onAfterStep(this.onAfterPhysicsStep);
-        this.unsubLevelStatus = this.levelState.onStatusChange(() => {
+        this.unsubCollision = stepper.world.onCollision((event) => {
+            if (!this.levelState.isPlaying) {
+                return;
+            }
+            if (event.kind === 'pillar') {
+                sfx.playCollision('pillar_rim', event.normalImpulse);
+            } else {
+                sfx.playCollision('ring_hit', event.normalImpulse);
+            }
+        });
+        this.unsubLockSfx = scoreJudge.onRingLocked(() => {
+            sfx.play('ring_lock');
+        });
+        this.unsubMatchSfx = scoreJudge.onMatchCleared((event) => {
+            sfx.play('match_clear', event.matchCount >= 3 ? 1 : 0.88);
+        });
+        this.unsubSkillSfx = pillarEnergy.onSkillTrigger((event) => {
+            sfx.play('energy_full');
+            sfx.play(event.side === 'left' ? 'skill_tide' : 'skill_calm');
+        });
+        this.unsubLevelStatus = this.levelState.onStatusChange((next) => {
             this.syncRuntimeWithLevelState();
+            if (next === 'won') {
+                this.sfx?.stopJetLoop();
+                this.sfx?.play('level_win');
+            } else if (next === 'lost') {
+                this.sfx?.stopJetLoop();
+                this.sfx?.play('level_lose');
+            } else if (next === 'ready') {
+                this.lastCountdownTickSec = -1;
+                this.sfx?.stopJetLoop();
+            }
         });
 
         // 体感参数修改后（T010 / T011）实时同步水流、气囊、3D 圈物理属性、双柱、已锁圈与海眼位置
@@ -138,7 +229,23 @@ export class Boot extends Component implements LevelSessionHost {
 
         // 3. 外壳绘制在最上层（Camera 3），内屏位置挖空；左右喷射键、HUD 与调参面板挂在外壳之上
         ShellView.create(machine);
-        const [leftJetBtn, rightJetBtn] = JetButton.createPair(machine, leftBladder, rightBladder);
+        const [leftJetBtn, rightJetBtn] = JetButton.createPair(machine, leftBladder, rightBladder, {
+            onPress: (_side, bladder) => {
+                if (!this.levelState.isPlaying || !bladder || bladder.output <= 0) {
+                    return;
+                }
+                sfx.play('jet_tap', 0.65 + 0.35 * bladder.output);
+            },
+            onRelease: (_side, bladder, fromSystem) => {
+                if (fromSystem || !this.levelState.isPlaying || !bladder) {
+                    return;
+                }
+                const depletion = 1 - bladder.reserve;
+                if (depletion >= GameConst.sfxReboundMinDepletion) {
+                    sfx.play('bladder_rebound', 0.45 + 0.55 * Math.min(1, depletion));
+                }
+            },
+        });
         this.leftJetBtn = leftJetBtn;
         this.rightJetBtn = rightJetBtn;
 
@@ -156,14 +263,45 @@ export class Boot extends Component implements LevelSessionHost {
             },
         });
 
+        // 通过 LevelLoader 读取关卡 JSON（默认 X01，支持 ?level=X02），加载前暂停物理步与输入
+        const levelLoader = LevelLoader.attach(this.node, this);
+        this.levelLoader = levelLoader;
+
         if (GameConst.DEBUG) {
-            TuningPanel.create(machine);
+            const tuningPanel = TuningPanel.create(machine);
+            this.tuningPanel = tuningPanel;
+            const levelEditor = LevelEditor.create(machine, {
+                ringLayer,
+                scoreJudge,
+                levelLoader,
+                host: {
+                    onEditorEnter: () => this.enterLevelEditorMode(),
+                    onEditorExit: (info) => this.exitLevelEditorMode(info),
+                    onEditorDurationChanged: (sec) => this.onEditorDurationChanged(sec),
+                },
+            });
+            this.levelEditor = levelEditor;
+            tuningPanel.bindEditorToggle(
+                () => levelEditor.toggle(),
+                () => levelEditor.isOpen,
+            );
+            this.soakBot = SoakBot.createIfEnabled(machine, {
+                stepper,
+                ringLayer,
+                scoreJudge,
+                leftBladder,
+                rightBladder,
+                leftPillar,
+                rightPillar,
+                levelState: this.levelState,
+                sfx,
+                getCurrentLevelId: () => this.currentLevelOptions.levelId ?? GameConst.defaultLevelId,
+                onRestartLevel: () => this.restartCurrentLevel(),
+            });
         }
 
-        // 通过 LevelLoader 读取关卡 JSON（默认 X01，支持 ?level=X02），加载前暂停物理步与输入
         this.syncRuntimeWithLevelState();
-        this.levelLoader = LevelLoader.attach(this.node, this);
-        this.levelLoader.loadFromQueryOrDefault();
+        levelLoader.loadFromQueryOrDefault();
 
         this.fitMachine();
         view.on('canvas-resize', this.fitMachine, this);
@@ -175,8 +313,30 @@ export class Boot extends Component implements LevelSessionHost {
         this.fitMachine();
     }
 
+    update(): void {
+        if (!this.sfx) {
+            return;
+        }
+        if (this.levelState.isPlaying && !this.editorActive) {
+            const leftOut = this.leftBladder?.output ?? 0;
+            const rightOut = this.rightBladder?.output ?? 0;
+            const maxOut = leftOut > rightOut ? leftOut : rightOut;
+            this.sfx.setJetLoopState(maxOut > GameConst.sfxJetLoopOutflowThreshold, maxOut);
+        } else {
+            this.sfx.stopJetLoop();
+        }
+    }
+
     onDestroy(): void {
         this.stepper?.offAfterStep(this.onAfterPhysicsStep);
+        this.unsubCollision?.();
+        this.unsubCollision = null;
+        this.unsubLockSfx?.();
+        this.unsubLockSfx = null;
+        this.unsubMatchSfx?.();
+        this.unsubMatchSfx = null;
+        this.unsubSkillSfx?.();
+        this.unsubSkillSfx = null;
         this.unsubLevelStatus?.();
         this.unsubLevelStatus = null;
         this.unsubFeel?.();
@@ -201,7 +361,12 @@ export class Boot extends Component implements LevelSessionHost {
             this.stepper.running = false;
             this.stepper.resetElapsed();
         }
+        this.lastCountdownTickSec = -1;
+        this.sfx?.reset();
+        this.glassTap?.clearRipples();
         this.scoreJudge?.reset();
+        this.tidePullSkill?.reset();
+        this.calmSeaSkill?.reset();
         this.pillarEnergy?.reset(merged.pillarEnergy);
         this.funnel?.reset();
         this.ringLayer?.clearAll();
@@ -222,6 +387,7 @@ export class Boot extends Component implements LevelSessionHost {
             this.levelState.start();
         }
         this.syncRuntimeWithLevelState();
+        this.soakBot?.onRoundLoaded(merged.levelId ?? GameConst.defaultLevelId);
     }
 
     /** 重开当前关卡 */
@@ -245,13 +411,78 @@ export class Boot extends Component implements LevelSessionHost {
     }
 
     private syncRuntimeWithLevelState(): void {
-        const running = this.levelState.shouldRunPhysics;
+        const running = this.levelState.shouldRunPhysics && !this.editorActive && !this.soakBot?.hasFailure;
         if (this.stepper) {
             this.stepper.running = running;
         }
+        if (!running) {
+            this.sfx?.stopJetLoop();
+        }
         this.leftJetBtn?.setInputEnabled(running);
         this.rightJetBtn?.setInputEnabled(running);
+        this.glassTap?.setInputEnabled(running);
         this.hud?.syncFromState(true);
+    }
+
+    private enterLevelEditorMode(): void {
+        this.editorActive = true;
+        this.tuningPanel?.setPanelOpen(false);
+        this.scoreJudge?.finishClearingImmediately();
+        this.hud?.setSuppressedByEditor(true);
+        this.ringSpawner?.setInputEnabled(false);
+        this.syncRuntimeWithLevelState();
+        this.tuningPanel?.syncEditorToggleVisual();
+    }
+
+    private onEditorDurationChanged(durationSec: number): void {
+        this.currentLevelOptions.durationSec = durationSec;
+        const freeRings = this.countFreeRings();
+        this.levelState.reset({ durationSec, initialFreeRings: freeRings });
+        this.hud?.syncFromState(true);
+    }
+
+    private exitLevelEditorMode(info: LevelEditorExitInfo): void {
+        this.editorActive = false;
+        this.hud?.setSuppressedByEditor(false);
+        this.ringSpawner?.setInputEnabled(true);
+        this.tuningPanel?.syncEditorToggleVisual();
+
+        if (info.edited) {
+            this.currentLevelOptions.durationSec = info.durationSec;
+            if (info.editedRings) {
+                const ringsSnapshot = info.editedRings;
+                const seed = this.currentLevelOptions.seed ?? GameConst.defaultLevelSeed;
+                this.currentLevelOptions.spawnRings = (layer: RingLayer) => {
+                    const spawns = resolveLevelRingLayout(ringsSnapshot, {
+                        seed,
+                        pillarPosPct: FeelConfig.pillarPosPct,
+                        pillarBottomPct: FeelConfig.pillarBottomPct,
+                        startPillarDropChance: 0,
+                    });
+                    for (let i = 0; i < spawns.length; i++) {
+                        const item = spawns[i];
+                        layer.spawn(item.x, item.y, item.spec, item.rollZDeg, {
+                            z: item.z,
+                            pitchXDeg: item.pitchXDeg,
+                            yawYDeg: item.yawYDeg,
+                            rollZDeg: item.rollZDeg,
+                        });
+                    }
+                };
+            }
+            this.tidePullSkill?.reset();
+            this.calmSeaSkill?.reset();
+            this.funnel?.reset();
+            this.pillarEnergy?.reset(this.currentLevelOptions.pillarEnergy);
+            this.lastCountdownTickSec = -1;
+            this.levelState.reset({ durationSec: info.durationSec, initialFreeRings: info.freeRingCount });
+            if (this.currentLevelOptions.autoStart !== false) {
+                this.levelState.start();
+            }
+            this.soakBot?.onRoundLoaded(this.currentLevelOptions.levelId ?? GameConst.defaultLevelId);
+        }
+
+        this.syncRuntimeWithLevelState();
     }
 
     private onAfterPhysicsStep = (dt: number): void => {
@@ -275,6 +506,19 @@ export class Boot extends Component implements LevelSessionHost {
             }
         }
         this.levelState.step(dt, { freeRings, clearingRings, totalRings });
+
+        if (this.levelState.isPlaying && this.sfx) {
+            const rem = this.levelState.remainingSec;
+            const sec = rem > 0 ? Math.ceil(rem) : 0;
+            if (sec >= 1 && sec <= GameConst.countdownUrgentSec) {
+                if (sec !== this.lastCountdownTickSec) {
+                    this.lastCountdownTickSec = sec;
+                    this.sfx.play('countdown_tick');
+                }
+            } else if (sec > GameConst.countdownUrgentSec) {
+                this.lastCountdownTickSec = -1;
+            }
+        }
     };
 
     /** 创建内屏水缸根节点，原点位于内屏左下角。 */

@@ -143,6 +143,17 @@ export class ScoreJudge extends Component {
         return this.stacks.left.count + this.stacks.right.count;
     }
 
+    /** 查询指定已锁圈当前是否处于消除后平滑下落动画中（供 T023 SoakBot 区分合法下落与非法漂移） */
+    isRingDropping(ring: Ring): boolean {
+        return this.droppingRings.has(ring);
+    }
+
+    /** 查询指定处于平滑下落动画中圈的目标缸坐标 Y（未在下落返回 undefined） */
+    getRingDropTargetY(ring: Ring): number | undefined {
+        const state = this.droppingRings.get(ring);
+        return state ? state.pillar.baseTopY + state.targetDyFromBase : undefined;
+    }
+
     onRingLocked(cb: RingLockedListener): () => void {
         if (!this.lockListeners.includes(cb)) {
             this.lockListeners.push(cb);
@@ -183,6 +194,68 @@ export class ScoreJudge extends Component {
         this.lockedOffsets.clear();
         this.flashingRings.clear();
         this.droppingRings.clear();
+        this.matchDeferElapsed.left = 0;
+        this.matchDeferElapsed.right = 0;
+    }
+
+    /** 将指定已锁定圈（及同柱上方已锁圈）解锁恢复为自由动态圈（供 T022 摆关移动/删改使用） */
+    unlockRing(ring: Ring, unlockAboveOnSamePillar = true): Ring[] {
+        this.holdProgress.delete(ring);
+        const unlocked: Ring[] = [];
+        for (const side of ['left', 'right'] as const) {
+            const stack = this.stacks[side];
+            const idx = stack.indexOf(ring);
+            if (idx < 0) {
+                continue;
+            }
+            const fromIdx = unlockAboveOnSamePillar ? stack.count - 1 : idx;
+            for (let i = fromIdx; i >= idx; i--) {
+                const target = stack.removeAt(i);
+                if (!target) {
+                    continue;
+                }
+                this.holdProgress.delete(target);
+                this.lockedOffsets.delete(target);
+                this.droppingRings.delete(target);
+                target.locked = false;
+                if (target.isBodyReady) {
+                    target.body3D.type = 'dynamic';
+                    target.body3D.clearVelocity();
+                    target.body3D.clearForces();
+                }
+                unlocked.push(target);
+            }
+            this.matchDeferElapsed[side] = 0;
+        }
+        if (unlocked.length === 0 && ring.locked && !ring.clearing) {
+            ring.locked = false;
+            if (ring.isBodyReady) {
+                ring.body3D.type = 'dynamic';
+                ring.body3D.clearVelocity();
+                ring.body3D.clearForces();
+            }
+            unlocked.push(ring);
+        }
+        return unlocked;
+    }
+
+    /** 立即完成所有正在闪烁消除中的圈并清理下落/稳定过渡状态（供摆关进入时防幽灵圈残留） */
+    finishClearingImmediately(): void {
+        if (this.flashingRings.size > 0) {
+            for (const [ring] of Array.from(this.flashingRings.entries())) {
+                this.flashingRings.delete(ring);
+                this.ringLayer?.destroyRing(ring);
+            }
+        }
+        if (this.droppingRings.size > 0) {
+            for (const [ring, state] of Array.from(this.droppingRings.entries())) {
+                if (ring.isValid && !ring.clearing && ring.isBodyReady) {
+                    this.applyRingHeightAtPillar(ring, state.pillar, state.targetDyFromBase);
+                }
+            }
+            this.droppingRings.clear();
+        }
+        this.holdProgress.clear();
         this.matchDeferElapsed.left = 0;
         this.matchDeferElapsed.right = 0;
     }
