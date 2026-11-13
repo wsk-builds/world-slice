@@ -5,8 +5,8 @@
   "type": "normal",
   "seed": 1001,
   "pillarEnergy": {
-    "left": false,
-    "right": false
+    "left": true,
+    "right": true
   },
   "rings": [
     { "kind": "normal", "color": "red", "pos": { "xPct": 18, "yPct": 22 } },
@@ -23,5 +23,5 @@
     "slateSubtitle": "轻点与长按喷射，把 6 枚锁脉环套上两根柱子。",
     "chinCue": "深海试水：点按左右喷射键，将 6 枚锁脉环套入双柱。"
   },
-  "note": "灰盒试验关 1：6 圈入门（红绿蓝各 2，3 对全可消），双柱充能关闭"
+  "note": "灰盒试验关 1：6 圈入门（红绿蓝各 2，3 对全可消），双柱充能开启便于灰盒实测充能与技能触发"
 }

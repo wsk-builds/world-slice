@@ -146,6 +146,30 @@ export const GameConst = {
 
     /** 关卡随机摆位时圈与圈、圈与柱之间的最小间隙（像素） */
     levelRingSpawnGapPx: 6,
+
+    /** 套中锁定一次增加的柱子能量（%，GDD §2.1） */
+    energyLockGainPct: 10,
+
+    /** 本次锁定触发同款消除时额外增加的能量（%，凑成一对共 60%，GDD §2.1） */
+    energyMatchBonusPct: 40,
+
+    /** 柱子满能量触发技能的阈值（%） */
+    energyMaxPct: 100,
+
+    /** 十字四翼卡托发光刻度格数（每格对应 10%） */
+    energyTickCount: 10,
+
+    /** 柱子技能默认持续时间（秒，期间暂停本柱充能，供 T018/T019 接管） */
+    pillarSkillDurationSec: 5,
+
+    /** 充满触发技能瞬间柱尖灵珠闪光时长（秒） */
+    pillarOrbFlashDurationSec: 0.45,
+
+    /** 柱尖 3D 灵珠小球半径（像素） */
+    pillarOrbRadiusPx: 6.8,
+
+    /** 柱尖 3D 灵珠底部相对柱尖顶点的留隙（像素） */
+    pillarOrbTipGapPx: 2.0,
 } as const;
 
 export interface RingPillarGeometry {

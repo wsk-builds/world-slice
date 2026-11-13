@@ -12,6 +12,7 @@ import { Funnel } from './game/Funnel';
 import { LevelLoader, LevelSessionHost } from './game/LevelLoader';
 import { PhysicsStepper } from './game/PhysicsStepper';
 import { Pillar } from './game/Pillar';
+import { PillarEnergyController } from './game/PillarEnergyController';
 import { RingLayer } from './game/RingLayer';
 import { ScoreJudge } from './game/ScoreJudge';
 import { Tank } from './game/Tank';
@@ -29,6 +30,7 @@ export interface LevelBootSessionOptions {
     durationSec?: number;
     seed?: number;
     title?: string;
+    pillarEnergy?: { left: boolean; right: boolean };
     spawnRings?: (ringLayer: RingLayer) => void;
     autoStart?: boolean;
 }
@@ -45,6 +47,7 @@ export class Boot extends Component implements LevelSessionHost {
     private ringLayer: RingLayer | null = null;
     private waterForce: WaterForce | null = null;
     private scoreJudge: ScoreJudge | null = null;
+    private pillarEnergy: PillarEnergyController | null = null;
     private funnel: Funnel | null = null;
     private levelLoader: LevelLoader | null = null;
     private leftJetBtn: JetButton | null = null;
@@ -56,6 +59,7 @@ export class Boot extends Component implements LevelSessionHost {
         durationSec: GameConst.defaultLevelDurationSec,
         seed: GameConst.defaultLevelSeed,
         title: GameConst.defaultLevelId,
+        pillarEnergy: { left: true, right: true },
         autoStart: true,
     };
 
@@ -91,11 +95,13 @@ export class Boot extends Component implements LevelSessionHost {
         const ringLayer = RingLayer.create(tankRoot, stageRig.tank3DRoot);
         const waterForce = WaterForce.attach(tankRoot, flowField, leftBladder, rightBladder, ringLayer);
         const scoreJudge = ScoreJudge.attach(tankRoot, leftPillar, rightPillar, ringLayer);
+        const pillarEnergy = PillarEnergyController.attach(tankRoot, leftPillar, rightPillar, scoreJudge);
         const funnel = Funnel.attach(tankRoot, leftPillar, rightPillar, ringLayer, scoreJudge);
         const ringSpawner = tankRoot.addComponent(RingDebugSpawner);
         ringSpawner.ringLayer = ringLayer;
         ringSpawner.scoreJudge = scoreJudge;
         ringSpawner.onClearAll = () => {
+            this.pillarEnergy?.reset(this.currentLevelOptions.pillarEnergy);
             this.levelState.reset({
                 durationSec: this.currentLevelOptions.durationSec,
                 initialFreeRings: 0,
@@ -112,6 +118,7 @@ export class Boot extends Component implements LevelSessionHost {
         this.ringLayer = ringLayer;
         this.waterForce = waterForce;
         this.scoreJudge = scoreJudge;
+        this.pillarEnergy = pillarEnergy;
         this.funnel = funnel;
 
         stepper.onAfterStep(this.onAfterPhysicsStep);
@@ -195,6 +202,7 @@ export class Boot extends Component implements LevelSessionHost {
             this.stepper.resetElapsed();
         }
         this.scoreJudge?.reset();
+        this.pillarEnergy?.reset(merged.pillarEnergy);
         this.funnel?.reset();
         this.ringLayer?.clearAll();
         this.ringLayer?.resetSpawnRng(seed);

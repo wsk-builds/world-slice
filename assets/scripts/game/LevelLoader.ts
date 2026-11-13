@@ -1,7 +1,7 @@
 import { _decorator, Component, JsonAsset, Node, resources } from 'cc';
 import { FeelConfig } from '../config/FeelConfig';
 import { GameConst } from '../config/GameConst';
-import { LevelData, parseLevelIdFromSearch } from '../core/level/LevelData';
+import { LevelData, parseLevelIdFromSearch, resolvePillarEnergyEnabled } from '../core/level/LevelData';
 import { resolveLevelRingLayout } from '../core/level/LevelRingLayout';
 import { validateLevel } from '../core/level/validateLevel';
 import { RingLayer } from './RingLayer';
@@ -13,6 +13,7 @@ export interface LevelSessionBootOptions {
     durationSec?: number;
     seed?: number;
     title?: string;
+    pillarEnergy?: { left: boolean; right: boolean };
     spawnRings?: (ringLayer: RingLayer) => void;
     autoStart?: boolean;
 }
@@ -120,6 +121,7 @@ export class LevelLoader extends Component {
             durationSec: level.durationSec,
             seed: level.seed,
             title: level.title,
+            pillarEnergy: resolvePillarEnergyEnabled(level),
             autoStart: true,
             spawnRings: (ringLayer: RingLayer) => {
                 const spawns = resolveLevelRingLayout(level.rings, {

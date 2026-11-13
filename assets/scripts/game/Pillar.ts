@@ -1,13 +1,19 @@
-import { _decorator, Component, MeshRenderer, Node, UITransform } from 'cc';
+import { _decorator, Color, Component, MeshRenderer, Node, UITransform } from 'cc';
 import { FeelConfig } from '../config/FeelConfig';
-import { calcRingPillarGeometry, RingPillarGeometry } from '../config/GameConst';
+import { calcRingPillarGeometry, GameConst, RingPillarGeometry } from '../config/GameConst';
+import { Palette } from '../config/Palette';
 import { TankSpace } from '../config/TankSpace';
 import { PillarCollider3D } from '../core/physics3d/PillarCollider3D';
 import {
     bindRendererMaterial,
+    createDynamicShadedMaterial,
     createPillarCrossGuardMesh,
     createPillarSpindleMesh,
+    DynamicShadedMaterialHandle,
+    getOrCreatePillarEnergyTickMaterials,
     getOrCreatePillarMaterials,
+    getOrCreatePillarOrbMesh,
+    getOrCreatePillarTickMesh,
 } from '../render/MeshFactory3D';
 import { RenderLayers, Stage3DRig } from '../render/Stage3DRig';
 import { PhysicsStepper } from './PhysicsStepper';
@@ -16,10 +22,16 @@ const { ccclass } = _decorator;
 
 export type PillarSide = 'left' | 'right';
 
+const TICK_STATE_DISABLED = 0;
+const TICK_STATE_OFF = 1;
+const TICK_STATE_LIT = 2;
+const TICK_STATE_SKILL = 3;
+
 /**
  * 三段式锥形十字玉柱（复刻参考视频造型：上尖下粗圆锥杆 + 十字四翼卡托 + 下端悬空收尖尾椎）。
  * 2D 节点保留在 TankRoot 下提供缸坐标引用，3D 网格挂在 Stage3DRig.tank3DRoot 下参与深度缓冲与光照渲染，
  * 物理碰撞由 PillarCollider3D 注册进 TorusWorld3D。
+ * 十字四翼卡托上的发光能量刻度与柱尖灵珠均挂在柱子 3D 节点上，调参拖动柱位时同步移动且不被叠圈遮挡。
  */
 @ccclass('Pillar')
 export class Pillar extends Component {
@@ -30,6 +42,18 @@ export class Pillar extends Component {
     private view3DRoot: Node | null = null;
     private spindleRenderer: MeshRenderer | null = null;
     private crossRenderer: MeshRenderer | null = null;
+    private tickRenderers: MeshRenderer[] = [];
+    private tickStates: number[] = [];
+    private orbNode: Node | null = null;
+    private orbMatHandle: DynamicShadedMaterialHandle | null = null;
+
+    private energyEnabled = true;
+    private energyRatio = 0;
+    private energyLitTicks = 0;
+    private energySkillActive = false;
+    private orbFlashRemaining = 0;
+    private orbAnimTime = 0;
+    private readonly orbColorScratch = new Color();
 
     static createPair(tankRoot: Node, tank3DRoot: Node): [Pillar, Pillar] {
         const layerNode = new Node('Pillars');
@@ -109,6 +133,55 @@ export class Pillar extends Component {
             },
         );
         this.crossRenderer = crossMr;
+
+        // 十字四翼卡托发光刻度（10 格，每格 10%）：挂在 CrossGuard 下与四翼严格共面跟随
+        const ticksRoot = new Node('EnergyTicks');
+        ticksRoot.layer = RenderLayers.RING_PILLAR_3D;
+        crossNode.addChild(ticksRoot);
+        this.tickRenderers = [];
+        this.tickStates = [];
+        for (let i = 0; i < GameConst.energyTickCount; i++) {
+            const tickNode = new Node(`Tick_${i}`);
+            tickNode.layer = RenderLayers.RING_PILLAR_3D;
+            ticksRoot.addChild(tickNode);
+            const tickMr = tickNode.addComponent(MeshRenderer);
+            tickMr.mesh = getOrCreatePillarTickMesh(geom, i, GameConst.energyTickCount);
+            const idx = i;
+            this.tickRenderers.push(tickMr);
+            this.tickStates.push(-1);
+            bindRendererMaterial(
+                () => this.resolveTickMaterialByIndex(idx),
+                (m) => {
+                    if (tickMr.isValid) tickMr.material = m;
+                },
+            );
+        }
+
+        // 柱尖 3D 灵珠小球：悬立于柱尖正上方，叠满 6 圈也不被遮挡
+        const orbNode = new Node('TipOrb');
+        orbNode.layer = RenderLayers.RING_PILLAR_3D;
+        orbNode.setPosition(0, this.calcTipOrbLocalY(geom), 0);
+        root3D.addChild(orbNode);
+        this.orbNode = orbNode;
+        const orbMr = orbNode.addComponent(MeshRenderer);
+        orbMr.mesh = getOrCreatePillarOrbMesh(GameConst.pillarOrbRadiusPx);
+        const orbMatHandle = createDynamicShadedMaterial(Palette.pillarEnergy.orbIdle, 0.72, 26.0, 0.45, 0.72);
+        this.orbMatHandle = orbMatHandle;
+        bindRendererMaterial(
+            () => orbMatHandle.material,
+            (m) => {
+                if (orbMr.isValid) orbMr.material = m;
+            },
+        );
+
+        this.refreshTickMaterials(true);
+        this.refreshOrbVisual();
+    }
+
+    private calcTipOrbLocalY(geom: RingPillarGeometry): number {
+        return Stage3DRig.pxTo3D(
+            geom.pillarTotalHeight + GameConst.pillarOrbTipGapPx + GameConst.pillarOrbRadiusPx,
+        );
     }
 
     /** 按 FeelConfig 与 GameConst 刷新位置、3D 物理碰撞与 3D 模型 */
@@ -144,11 +217,175 @@ export class Pillar extends Component {
                         0,
                     );
                 }
+                for (let i = 0; i < this.tickRenderers.length; i++) {
+                    const mr = this.tickRenderers[i];
+                    if (mr && mr.isValid) {
+                        mr.mesh = getOrCreatePillarTickMesh(geom, i, GameConst.energyTickCount);
+                    }
+                }
+                if (this.orbNode && this.orbNode.isValid) {
+                    this.orbNode.setPosition(0, this.calcTipOrbLocalY(geom), 0);
+                }
             }
         }
     }
 
+    /** 同步本柱当前充能状态到十字刻度与柱尖灵珠（T017） */
+    setEnergyState(state: {
+        enabled: boolean;
+        ratio: number;
+        litTicks: number;
+        skillActive: boolean;
+    }): void {
+        this.energyEnabled = state.enabled;
+        this.energyRatio = Math.min(1, Math.max(0, state.ratio));
+        this.energyLitTicks = Math.min(GameConst.energyTickCount, Math.max(0, state.litTicks));
+        this.energySkillActive = state.skillActive;
+        this.refreshTickMaterials(false);
+        this.refreshOrbVisual();
+    }
+
+    /** 充满触发技能瞬间的柱尖灵珠闪光表现 */
+    triggerSkillFlash(): void {
+        this.orbFlashRemaining = GameConst.pillarOrbFlashDurationSec;
+        this.refreshOrbVisual();
+    }
+
+    /** 重置能量显示状态（切关 / 重开 / R 清空时调用） */
+    resetEnergyVisual(enabled = true): void {
+        this.orbFlashRemaining = 0;
+        this.orbAnimTime = 0;
+        this.setEnergyState({
+            enabled,
+            ratio: 0,
+            litTicks: 0,
+            skillActive: false,
+        });
+    }
+
+    update(dt: number): void {
+        if (!this.orbNode || !this.orbNode.isValid) {
+            return;
+        }
+        const safeDt = Math.min(Math.max(0, dt), 0.1);
+        this.orbAnimTime += safeDt;
+        if (this.orbFlashRemaining > 0) {
+            this.orbFlashRemaining = Math.max(0, this.orbFlashRemaining - safeDt);
+        }
+        this.refreshOrbVisual();
+    }
+
+    private resolveTickState(index: number): number {
+        if (!this.energyEnabled) {
+            return TICK_STATE_DISABLED;
+        }
+        if (this.energySkillActive) {
+            return TICK_STATE_SKILL;
+        }
+        return index < this.energyLitTicks ? TICK_STATE_LIT : TICK_STATE_OFF;
+    }
+
+    private resolveTickMaterialByIndex(index: number) {
+        const mats = getOrCreatePillarEnergyTickMaterials();
+        const st = this.resolveTickState(index);
+        switch (st) {
+            case TICK_STATE_DISABLED:
+                return mats.disabledMat;
+            case TICK_STATE_SKILL:
+                return mats.skillMat;
+            case TICK_STATE_LIT:
+                return mats.litMat;
+            case TICK_STATE_OFF:
+            default:
+                return mats.offMat;
+        }
+    }
+
+    private refreshTickMaterials(force: boolean): void {
+        if (this.tickRenderers.length === 0) {
+            return;
+        }
+        const mats = getOrCreatePillarEnergyTickMaterials();
+        for (let i = 0; i < this.tickRenderers.length; i++) {
+            const mr = this.tickRenderers[i];
+            if (!mr || !mr.isValid) {
+                continue;
+            }
+            const nextState = this.resolveTickState(i);
+            if (!force && this.tickStates[i] === nextState) {
+                continue;
+            }
+            this.tickStates[i] = nextState;
+            switch (nextState) {
+                case TICK_STATE_DISABLED:
+                    mr.material = mats.disabledMat;
+                    break;
+                case TICK_STATE_SKILL:
+                    mr.material = mats.skillMat;
+                    break;
+                case TICK_STATE_LIT:
+                    mr.material = mats.litMat;
+                    break;
+                case TICK_STATE_OFF:
+                default:
+                    mr.material = mats.offMat;
+                    break;
+            }
+        }
+    }
+
+    private refreshOrbVisual(): void {
+        if (!this.orbNode || !this.orbNode.isValid || !this.orbMatHandle) {
+            return;
+        }
+
+        const c = this.orbColorScratch;
+        if (!this.energyEnabled) {
+            this.orbNode.setScale(0.72, 0.72, 0.72);
+            this.orbMatHandle.setVisual(Palette.pillarEnergy.orbDisabled, 0.14, 14.0, 0.1, 0.24);
+            return;
+        }
+
+        const flashDur = Math.max(0.001, GameConst.pillarOrbFlashDurationSec);
+        const flashT = this.orbFlashRemaining > 0 ? Math.min(1, this.orbFlashRemaining / flashDur) : 0;
+
+        if (this.energySkillActive || flashT > 0) {
+            const pulse = 0.5 + 0.5 * Math.sin(this.orbAnimTime * 11.0);
+            const scale = (this.energySkillActive ? 1.15 + 0.14 * pulse : 1.0) + 0.42 * flashT;
+            this.orbNode.setScale(scale, scale, scale);
+            Color.lerp(c, Palette.pillarEnergy.orbSkill, Palette.pillarEnergy.orbFlash, Math.max(pulse * 0.45, flashT));
+            this.orbMatHandle.setVisual(
+                c,
+                0.85 + 0.15 * flashT,
+                22.0,
+                0.48 + 0.16 * flashT,
+                0.92 + 0.08 * flashT,
+            );
+            return;
+        }
+
+        const ratio = this.energyRatio;
+        const breathFreq = 2.4 + ratio * 4.6;
+        const pulse = 0.5 + 0.5 * Math.sin(this.orbAnimTime * breathFreq);
+        const scale = 0.94 + (0.04 + ratio * 0.15) * pulse;
+        this.orbNode.setScale(scale, scale, scale);
+
+        Color.lerp(c, Palette.pillarEnergy.orbIdle, Palette.pillarEnergy.orbCharged, ratio);
+        const peakBlend = (0.08 + ratio * 0.38) * pulse;
+        Color.lerp(c, c, Palette.pillarEnergy.orbFlash, peakBlend);
+
+        this.orbMatHandle.setVisual(
+            c,
+            0.55 + ratio * 0.3,
+            24.0,
+            0.3 + ratio * 0.25,
+            0.56 + ratio * 0.36 + peakBlend * 0.1,
+        );
+    }
+
     onDestroy(): void {
+        this.orbMatHandle?.dispose();
+        this.orbMatHandle = null;
         if (this.view3DRoot && this.view3DRoot.isValid) {
             this.view3DRoot.destroy();
             this.view3DRoot = null;

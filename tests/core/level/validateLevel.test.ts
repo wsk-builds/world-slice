@@ -146,7 +146,7 @@ describe('validateLevel 关卡数据校验', () => {
 
     it('仓库内置灰盒试验关 X01 / X02 / X03 均通过校验且圈数与配对合理可过关', () => {
         const expected = [
-            { id: 'X01', count: 6, leftEnergy: false, rightEnergy: false },
+            { id: 'X01', count: 6, leftEnergy: true, rightEnergy: true },
             { id: 'X02', count: 9, leftEnergy: false, rightEnergy: false },
             { id: 'X03', count: 12, leftEnergy: true, rightEnergy: false },
         ];

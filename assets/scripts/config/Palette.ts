@@ -65,6 +65,19 @@ export const Palette = {
     pillarBaseFill: hex('#2C826C'),
     pillarBorder: hex('#8EE6CE'),
 
+    /** 柱子充能刻度与柱尖灵珠配色（T017） */
+    pillarEnergy: {
+        tickDisabled: hex('#1C3631'),
+        tickOff: hex('#214E45'),
+        tickLit: hex('#5CE6D0'),
+        tickSkill: hex('#FFE066'),
+        orbDisabled: hex('#243E3A'),
+        orbIdle: hex('#3FA896'),
+        orbCharged: hex('#7CF7E8'),
+        orbSkill: hex('#FFD95A'),
+        orbFlash: hex('#FFF7CC'),
+    },
+
     /** 灰盒七种锁脉环配色 */
     ring: {
         red: hex('#EE5253'),
