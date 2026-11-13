@@ -6,9 +6,9 @@ import { FlowField, FlowSide, FlowVec2 } from '../core/flow/FlowField';
 /** 气泡数量上限（读取全局常量） */
 export const MAX_BUBBLES = GameConst.bubblePoolMaxCount;
 
-const AMBIENT_TARGET_COUNT = 16;
-const AMBIENT_SPAWN_PER_SEC = 5;
-const JET_SPAWN_PER_SEC = 38;
+const AMBIENT_TARGET_COUNT = 14;
+const AMBIENT_SPAWN_PER_SEC = 3.8;
+const JET_SPAWN_PER_SEC = 20;
 const JET_MIN_LEVEL = 0.02;
 
 /** 低于此水速时 1:1 跟随，高出部分平滑饱和以兼顾海眼喷柱感与环流辨识度 */
@@ -152,18 +152,18 @@ export class BubblePool {
     }
 
     private seedInitialAmbient(): void {
-        const count = Math.min(12, this.maxCount);
+        const count = Math.min(10, this.maxCount);
         for (let i = 0; i < count; i++) {
             const slot = this.acquireSlot('ambient');
             if (!slot) {
                 break;
             }
-            const radius = this.rng.range(2.4, 4.4);
-            const life = this.rng.range(3.2, 5.2);
+            const radius = this.rng.range(2.4, 4.2);
+            const life = this.rng.range(4.2, 6.8);
             const x = this.rng.range(radius + 20, this.tankWidth - radius - 20);
-            const y = this.rng.range(24, this.tankHeight * 0.82);
+            const y = this.rng.range(12, this.tankHeight * 0.65);
 
-            this.activateBubble(slot, 'ambient', x, y, radius, this.rng.range(30, 46), life);
+            this.activateBubble(slot, 'ambient', x, y, radius, this.rng.range(36, 56), life);
             slot.age = this.rng.range(0, life * 0.55);
             slot.alpha = this.calcAlpha(slot);
         }
@@ -222,11 +222,11 @@ export class BubblePool {
             if (!slot) {
                 break;
             }
-            const radius = this.rng.range(2.3, 4.3);
+            const radius = this.rng.range(2.3, 4.1);
             const x = this.rng.range(radius + 18, this.tankWidth - radius - 18);
-            const y = this.rng.range(10, this.tankHeight * 0.52);
-            const buoyancy = this.rng.range(30, 46);
-            const life = this.rng.range(3.2, 5.2);
+            const y = this.rng.range(8, this.tankHeight * 0.2);
+            const buoyancy = this.rng.range(36, 56);
+            const life = this.rng.range(4.2, 6.8);
             this.activateBubble(slot, 'ambient', x, y, radius, buoyancy, life);
         }
     }

@@ -35,15 +35,15 @@ describe('BubblePool', () => {
         }
         const ambientOnly = pool.activeCount;
         expect(ambientOnly).toBeGreaterThan(5);
-        expect(ambientOnly).toBeLessThanOrEqual(20);
+        expect(ambientOnly).toBeLessThanOrEqual(16);
 
-        // 左海眼喷水 0.4 秒，气泡数明显增多且集中出现在左海眼上方
+        // 左海眼喷水 0.65 秒（一口满气），气泡数明显增多且集中出现在左海眼上方
         flow.setJetInputs(1, 0);
-        for (let i = 0; i < 24; i++) {
+        for (let i = 0; i < 39; i++) {
             flow.step(1 / 60);
             pool.step(1 / 60);
         }
-        expect(pool.activeCount).toBeGreaterThan(ambientOnly + 10);
+        expect(pool.activeCount).toBeGreaterThan(ambientOnly + 6);
 
         const leftNozzleX = flow.jet.getNozzlePose('left').x;
         let nearLeftNozzle = 0;
@@ -60,8 +60,23 @@ describe('BubblePool', () => {
                 nearRightNozzle++;
             }
         }
-        expect(nearLeftNozzle).toBeGreaterThan(10);
+        expect(nearLeftNozzle).toBeGreaterThanOrEqual(8);
         expect(nearRightNozzle).toBe(0);
+    });
+
+    it('新增环境气泡从缸内下 1/5 区域开始生成', () => {
+        const flow = new FlowField({ seed: 11, turbulenceScale: 0 });
+        const pool = new BubblePool(flow, { seedInitialAmbient: false });
+
+        for (let i = 0; i < 60; i++) {
+            pool.step(1 / 60);
+            for (const b of pool.items) {
+                if (b.active && b.kind === 'ambient' && b.age <= 1 / 60 + 1e-6) {
+                    expect(b.y).toBeLessThanOrEqual(TankSpace.height * 0.2 + 5);
+                }
+            }
+        }
+        expect(pool.ambientCount).toBeGreaterThan(0);
     });
 
     it('气泡按同一 FlowField.velocityAt 漂移：左侧喷水后上方气泡向右顺时针转，右侧喷水向左逆时针转', () => {

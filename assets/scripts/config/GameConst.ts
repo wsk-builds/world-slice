@@ -54,7 +54,7 @@ export const GameConst = {
     turbulenceTimeRate: 0.45,
 
     /** 气泡池最大同时存在数量上限 */
-    bubblePoolMaxCount: 72,
+    bubblePoolMaxCount: 56,
 } as const;
 
 export interface RingPillarGeometry {
