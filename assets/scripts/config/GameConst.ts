@@ -93,14 +93,14 @@ export const GameConst = {
     /** 圈在柱子上连续稳定多久后锁定（秒，GDD §2.1） */
     ringLockDurationSec: 0.3,
 
-    /** 锁定判定的三维线速度上限（像素/秒） */
-    ringLockMaxLinearSpeedPx: 55,
+    /** 锁定判定的三维线速度上限（像素/秒，收紧以确保圈完全落妥静止后才休眠） */
+    ringLockMaxLinearSpeedPx: 18,
 
-    /** 锁定判定的三维角速度上限（弧度/秒） */
-    ringLockMaxAngularSpeedRad: 2.0,
+    /** 锁定判定的三维角速度上限（弧度/秒，收紧以确保圈不再晃动才休眠） */
+    ringLockMaxAngularSpeedRad: 0.45,
 
     /** 锁定判定允许的最大倾角（度，0° 为水平正圆环） */
-    ringLockMaxTiltDeg: 38,
+    ringLockMaxTiltDeg: 28,
 
     /** 锁定后保留自然 3D 错落微倾的最大倾角上限（度，既自然斜靠又不影响叠满 6 层） */
     ringLockedRestMaxTiltDeg: 15,

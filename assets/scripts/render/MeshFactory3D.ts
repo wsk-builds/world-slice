@@ -18,8 +18,36 @@ let pillarShaftMat: Material | null = null;
 let pillarCrossMat: Material | null = null;
 let loadedMatcapEffect: EffectAsset | null = null;
 let loadingMatcapEffect = false;
+let currentObliqueShear = Math.tan((14 * Math.PI) / 180);
+let currentObliqueZRef = -0.29;
 
 const loadedEffectKey = '../resources/effects/matcap';
+
+/** 同步斜轴俯视剪切系数与前缘接地基准到全部 3D 圈柱材质（竖杆 100% 笔直 + 缸底圈贴底零浮空） */
+export function ensureObliqueShearSynced(shearY: number, zRef = currentObliqueZRef): void {
+    if (Math.abs(currentObliqueShear - shearY) < 1e-5 && Math.abs(currentObliqueZRef - zRef) < 1e-5) {
+        return;
+    }
+    currentObliqueShear = shearY;
+    currentObliqueZRef = zRef;
+    const v = new Vec4(shearY, zRef, 0, 0);
+    for (const mat of ringMaterialCache.values()) {
+        try {
+            mat.setProperty('obliqueParams', v);
+        } catch {
+            // builtin-unlit 兜底阶段无此属性，升级后自动写入
+        }
+    }
+    for (const mat of [pillarShaftMat, pillarCrossMat]) {
+        if (mat) {
+            try {
+                mat.setProperty('obliqueParams', v);
+            } catch {
+                // ignore
+            }
+        }
+    }
+}
 
 /**
  * 异步预加载并热切换 `resources/effects/matcap` 球面高光着色器（场景零灯光零阴影）。
@@ -63,6 +91,7 @@ function initShadedMaterial(
         mat.initialize({ effectAsset: eff });
         mat.setProperty('mainColor', color);
         mat.setProperty('matcapParams', new Vec4(specStrength, shininess, rimStrength, ambientFloor));
+        mat.setProperty('obliqueParams', new Vec4(currentObliqueShear, currentObliqueZRef, 0, 0));
     } else {
         mat.initialize({ effectName: 'builtin-unlit' });
         mat.setProperty('mainColor', color);
@@ -81,6 +110,7 @@ export function bindRendererMaterial(
 }
 
 function upgradeAllCachedMaterials(eff: EffectAsset): void {
+    const obliqueVec = new Vec4(currentObliqueShear, currentObliqueZRef, 0, 0);
     for (const [key] of ringMaterialCache.entries()) {
         const spec = parseRingSpecFromKey(key);
         const cfg = resolveRingMatSpec(spec);
@@ -91,6 +121,7 @@ function upgradeAllCachedMaterials(eff: EffectAsset): void {
             'matcapParams',
             new Vec4(cfg.specStrength, cfg.shininess, cfg.rimStrength, cfg.ambientFloor),
         );
+        fresh.setProperty('obliqueParams', obliqueVec);
         ringMaterialCache.set(key, fresh);
     }
     if (pillarShaftMat) {
@@ -98,6 +129,7 @@ function upgradeAllCachedMaterials(eff: EffectAsset): void {
         freshShaft.initialize({ effectAsset: eff });
         freshShaft.setProperty('mainColor', Palette.pillarRodFill);
         freshShaft.setProperty('matcapParams', new Vec4(0.45, 28.0, 0.28, 0.36));
+        freshShaft.setProperty('obliqueParams', obliqueVec);
         pillarShaftMat = freshShaft;
     }
     if (pillarCrossMat) {
@@ -105,6 +137,7 @@ function upgradeAllCachedMaterials(eff: EffectAsset): void {
         freshCross.initialize({ effectAsset: eff });
         freshCross.setProperty('mainColor', Palette.pillarBaseFill);
         freshCross.setProperty('matcapParams', new Vec4(0.4, 22.0, 0.24, 0.32));
+        freshCross.setProperty('obliqueParams', obliqueVec);
         pillarCrossMat = freshCross;
     }
     for (let i = boundRenderers.length - 1; i >= 0; i--) {

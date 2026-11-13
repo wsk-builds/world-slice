@@ -3,7 +3,6 @@ import { GameConst } from '../config/GameConst';
 import {
     calcRingTiltDeg3D,
     calcSlotCenterY,
-    clampLockedRingPose3D,
     isRingOnPillar3D,
     isRingStableForLock,
     PillarStack,
@@ -32,6 +31,7 @@ interface HoldProgress {
 
 interface LockedLocalOffset {
     dx: number;
+    dyFromBase: number;
     dz: number;
 }
 
@@ -134,16 +134,19 @@ export class ScoreJudge extends Component {
                 if (!ring.isValid) {
                     continue;
                 }
-                const slotY = calcSlotCenterY(
+                const fallbackY = calcSlotCenterY(
                     baseTopY,
                     thicknesses,
                     ring.dimensions.thickness,
                     i,
                     GameConst.pillarSlotPitchScale,
                 );
-                const off = this.lockedOffsets.get(ring) ?? { dx: 0, dz: 0 };
+                const off = this.lockedOffsets.get(ring);
+                const targetY = off ? baseTopY + off.dyFromBase : fallbackY;
+                const dx = off ? off.dx : 0;
+                const dz = off ? off.dz : 0;
                 const q = ring.body3D.quat;
-                ring.body3D.setPose(pillarX + off.dx, slotY, off.dz, q.x, q.y, q.z, q.w);
+                ring.body3D.setPose(pillarX + dx, targetY, dz, q.x, q.y, q.z, q.w);
                 ring.syncVisualFromBody();
             }
         }
@@ -262,38 +265,26 @@ export class ScoreJudge extends Component {
         return null;
     }
 
-    private lockRingOnPillar3D(ring: Ring, pillar: Pillar, slotCenterY: number): void {
+    private lockRingOnPillar3D(ring: Ring, pillar: Pillar, _slotCenterY: number): void {
         ring.locked = true;
         const b = ring.body3D;
         const pillarX = pillar.node.position.x;
-        const clamped = clampLockedRingPose3D({
-            x: b.x,
-            y: b.y,
-            z: b.z,
-            quat: b.quat,
-            pillarX,
-            pillarZ: 0,
-            slotCenterY,
-            innerRadius: ring.dimensions.innerRadius,
-            shaftRadiusAtSlot: pillar.shaftRadiusAtY(slotCenterY),
-            maxRestTiltDeg: GameConst.ringLockedRestMaxTiltDeg,
-        });
 
+        // 原地静默休眠：圆环在卡托或下方已锁圈上稳定 0.3 秒时，物理接触已完全自然落妥无穿模，
+        // 直接冻结当前真实三维位置与旋转，绝不瞬移跳动！
         this.lockedOffsets.set(ring, {
-            dx: clamped.x - pillarX,
-            dz: clamped.z,
+            dx: b.x - pillarX,
+            dyFromBase: b.y - pillar.baseTopY,
+            dz: b.z,
         });
 
         b.type = 'static';
-        b.setPose(
-            clamped.x,
-            clamped.y,
-            clamped.z,
-            clamped.quat.x,
-            clamped.quat.y,
-            clamped.quat.z,
-            clamped.quat.w,
-        );
+        b.vx = 0;
+        b.vy = 0;
+        b.vz = 0;
+        b.wx = 0;
+        b.wy = 0;
+        b.wz = 0;
         ring.syncVisualFromBody();
     }
 

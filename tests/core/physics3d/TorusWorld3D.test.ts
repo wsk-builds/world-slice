@@ -302,8 +302,56 @@ describe('TorusWorld3D 真 3D 圆环翻转、锥形十字柱与立体堆叠', ()
 
         const rightJetOuterEdge = TankSpace.pctToPxX(86) + 68;
         for (const r of cornerRings) {
-            // 每个圈左缘（x - majorR）都已进入右海眼喷流口覆盖范围之内，绝无喷不到的死角
             expect(r.x - majorR).toBeLessThan(rightJetOuterEdge);
         }
+    });
+
+    it('圈落定在柱上与相互堆叠时平滑静止不发生突变跳动', () => {
+        const world = new TorusWorld3D();
+        const pillarX = TankSpace.pctToPxX(32.5);
+        const pillarBottomY = TankSpace.pctToPxY(31);
+        const pillar = world.addPillar(new PillarCollider3D(pillarX, pillarBottomY, geom));
+
+        const r1 = world.addBody(
+            new TorusBody3D({
+                x: pillarX + 2,
+                y: pillar.baseTopY + tubeR + 18,
+                z: 0,
+                majorRadius: majorR,
+                tubeRadius: tubeR,
+                linearDamping: 0.6,
+                angularDamping: 3.5,
+            }),
+        );
+        const r2 = world.addBody(
+            new TorusBody3D({
+                x: pillarX - 2,
+                y: pillar.baseTopY + tubeR * 3 + 38,
+                z: 1,
+                majorRadius: majorR,
+                tubeRadius: tubeR,
+                linearDamping: 0.6,
+                angularDamping: 3.5,
+            }),
+        );
+
+        let prevY1 = r1.y;
+        let prevY2 = r2.y;
+        let maxUpJumpAfterSettle = 0;
+
+        for (let step = 0; step < 180; step++) {
+            r1.applyCentralForce(0, -520 * r1.mass, 0);
+            r2.applyCentralForce(0, -520 * r2.mass, 0);
+            world.step(1 / 60);
+
+            if (step > 60) {
+                maxUpJumpAfterSettle = Math.max(maxUpJumpAfterSettle, Math.abs(r1.y - prevY1), Math.abs(r2.y - prevY2));
+            }
+            prevY1 = r1.y;
+            prevY2 = r2.y;
+        }
+
+        // 落定后单帧位移严格小于 0.5px，无任何位置修正过推或锁定瞬移跳动
+        expect(maxUpJumpAfterSettle).toBeLessThan(0.5);
     });
 });

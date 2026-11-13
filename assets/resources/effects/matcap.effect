@@ -10,6 +10,7 @@ CCEffect %{
       properties: &props
         mainColor:      { value: [1.0, 1.0, 1.0, 1.0], linear: true, editor: { type: color } }
         matcapParams:   { value: [0.48, 28.0, 0.28, 0.36] } # x: specStrength, y: shininess, z: rimStrength, w: ambientFloor
+        obliqueParams:  { value: [0.2493, -0.29, 0.0, 0.0] } # x: obliqueShearY, y: zGroundRef
         matcapTex:      { value: white, editor: { parent: USE_MATCAP_TEX } }
 }%
 
@@ -19,6 +20,12 @@ CCProgram matcap-vs %{
   #include <builtin/uniforms/cc-global>
   #include <legacy/decode-base>
   #include <legacy/local-batch>
+
+  uniform MatcapConstants {
+    vec4 mainColor;
+    vec4 matcapParams;
+    vec4 obliqueParams;
+  };
 
   out vec3 v_viewNormal;
   out vec3 v_worldNormal;
@@ -30,11 +37,22 @@ CCProgram matcap-vs %{
     mat4 matWorld, matWorldIT;
     CCGetWorldMatrixFull(matWorld, matWorldIT);
 
+    vec4 worldPos = matWorld * In.position;
+    // 正轴测斜俯视投影（Orthographic Oblique Cabinet Projection）：
+    // 1. 平行正交相机 + 仅按前后纵深 worldPos.z 产生斜向俯视高度差；
+    // 2. 竖直柱杆 (dx=0) 在屏幕任意位置 100% 笔直不歪斜；
+    // 3. 平躺圆环清晰露出立体圆孔，且缸底前缘紧贴内屏底线零浮空！
+    vec4 viewPos = cc_matView * worldPos;
+    viewPos.y -= (worldPos.z + obliqueParams.y) * obliqueParams.x;
+
     vec3 worldNormal = normalize((matWorldIT * vec4(In.normal, 0.0)).xyz);
     v_worldNormal = worldNormal;
-    v_viewNormal = normalize((cc_matView * vec4(worldNormal, 0.0)).xyz);
 
-    return cc_matProj * (cc_matView * matWorld) * In.position;
+    vec3 viewN = (cc_matView * vec4(worldNormal, 0.0)).xyz;
+    viewN.z += worldNormal.y * obliqueParams.x;
+    v_viewNormal = normalize(viewN);
+
+    return cc_matProj * viewPos;
   }
 }%
 
@@ -52,6 +70,7 @@ CCProgram matcap-fs %{
   uniform MatcapConstants {
     vec4 mainColor;
     vec4 matcapParams;
+    vec4 obliqueParams;
   };
 
   vec4 frag () {

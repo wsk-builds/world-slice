@@ -241,7 +241,7 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
                 0,
                 1,
                 -tank.halfDepth + rTube - qz,
-                mu * 0.5,
+                0,
                 rest,
             );
         }
@@ -260,7 +260,7 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
                 0,
                 -1,
                 qz + rTube - tank.halfDepth,
-                mu * 0.5,
+                0,
                 rest,
             );
         }

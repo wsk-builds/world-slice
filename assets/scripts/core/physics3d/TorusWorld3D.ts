@@ -13,9 +13,9 @@ import {
 
 const SUB_STEPS = 2;
 const VELOCITY_ITERATIONS = 10;
-const POSITION_SLOP_PX = 0.18;
-const POSITION_BAUMGARTE = 0.42;
-const MAX_POSITION_CORRECTION_PX = 5.0;
+const POSITION_SLOP_PX = 0.25;
+const POSITION_BAUMGARTE = 0.22;
+const MAX_POSITION_CORRECTION_PX = 2.0;
 const RESTITUTION_SPEED_THRESHOLD = 36;
 const MAX_LINEAR_SPEED_PX = 1800;
 const MAX_ANGULAR_SPEED_RAD = 28;
@@ -180,9 +180,29 @@ export class TorusWorld3D {
             b.syncDerivedState();
         }
 
-        // 5. 纯位置无能量穿透修正（防止重压堆叠沉底或穿模）
+        // 5. 纯位置无能量穿透修正（基于位置积分后的最新坐标重新检测真实残余穿透，彻底消除旧接触点过推跳动）
         if (this.contacts.length > 0) {
-            this.solvePositionConstraints();
+            this.contacts.length = 0;
+            for (let i = 0; i < nBodies; i++) {
+                const a = this.bodies[i];
+                if (a.type === 'dynamic') {
+                    detectTorusTankContacts(a, this.tank, this.contacts);
+                    for (let p = 0; p < this.pillars.length; p++) {
+                        detectTorusPillarContacts(a, this.pillars[p], this.contacts);
+                    }
+                }
+                for (let j = i + 1; j < nBodies; j++) {
+                    detectTorusTorusContacts(a, this.bodies[j], this.contacts);
+                }
+            }
+            if (this.contacts.length > 0) {
+                this.solvePositionConstraints();
+                for (let i = 0; i < nBodies; i++) {
+                    if (this.bodies[i].type === 'dynamic') {
+                        this.bodies[i].syncDerivedState();
+                    }
+                }
+            }
         }
     }
 

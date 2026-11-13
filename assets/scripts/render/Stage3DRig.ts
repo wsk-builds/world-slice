@@ -1,9 +1,9 @@
 import { _decorator, Camera, Canvas, Component, Layers, Node, screen, toRadian, view } from 'cc';
-import { GameConst } from '../config/GameConst';
+import { calcRingPillarGeometry, GameConst } from '../config/GameConst';
 import { calcMachineScale, LayoutConfig } from '../config/LayoutConfig';
 import { Palette } from '../config/Palette';
 import { TankSpace } from '../config/TankSpace';
-import { ensureMatcapEffectLoaded } from './MeshFactory3D';
+import { ensureMatcapEffectLoaded, ensureObliqueShearSynced } from './MeshFactory3D';
 
 const { ccclass } = _decorator;
 
@@ -55,6 +55,16 @@ export class Stage3DRig extends Component {
         const scene = canvasNode.scene;
         const canvas = canvasNode.getComponent(Canvas);
 
+        // 视角空间正对垂直光轴，保留经典水压掌机斜向俯看圈孔立体感的同时：
+        // 1. 竖直柱杆 (dx=0) 在屏幕上 100% 笔直不歪斜；
+        // 2. 地面 y=0 在屏幕上严格对齐 2D 缸底线，平躺在底部的圆环紧贴缸底零浮空！
+        const obliqueK = Math.tan(toRadian(GameConst.camera3dPitchDownDeg));
+        // 平躺圆环在缸底的前缘最低点对齐内屏底线：后玻璃圈也严丝合缝贴在缸底，不产生任何浮空
+        const geomInit = calcRingPillarGeometry(TankSpace.width);
+        const majorRadius3DInit = (geomInit.ringOuterDiameter * 0.5 - geomInit.ringThickness * 0.5) / GameConst.physics3dPtm;
+        const zGroundRefInit = -majorRadius3DInit;
+        ensureObliqueShearSynced(obliqueK, zGroundRefInit);
+
         // 1. 改造场景自带 Canvas Camera 为前景与外壳相机（Camera 3）
         const fgCam = canvas?.cameraComponent ?? canvasNode.getComponentInChildren(Camera)!;
         fgCam.priority = 30;
@@ -86,13 +96,11 @@ export class Stage3DRig extends Component {
         cam3DNode.layer = RenderLayers.RING_PILLAR_3D;
         world3D.addChild(cam3DNode);
         const cam3D = cam3DNode.addComponent(Camera);
-        cam3D.projection = Camera.ProjectionType.PERSPECTIVE;
-        cam3D.fovAxis = Camera.FOVAxis.VERTICAL;
-        cam3D.fov = GameConst.camera3dFovDeg;
+        cam3D.projection = Camera.ProjectionType.ORTHO;
         cam3D.priority = 20;
         cam3D.visibility = RenderLayers.RING_PILLAR_3D;
         cam3D.clearFlags = Camera.ClearFlag.DEPTH_ONLY;
-        cam3D.near = 1;
+        cam3D.near = 0.5;
         cam3D.far = 80;
         this.stage3DCamera = cam3D;
 
@@ -128,27 +136,28 @@ export class Stage3DRig extends Component {
         const cwPos = this.canvasNode.worldPosition;
         this.bgCamera.node.setWorldPosition(cwPos.x, cwPos.y, 1000);
 
-        // 计算 3D 透视相机距离，使得在 z = 0 平面上可视高度恰好等于 visible.height / (machineScale * ptm)
+        // 同步 3D 正交斜轴俯视相机：
+        // - 正交投影彻底消除左右柱杆的透视外八字歪斜（两根柱子 100% 绝对垂直）；
+        // - 配合 matcap.effect 里的斜轴俯视剪切与底边接地对齐，既清晰展现圆环孔洞立体感，又让缸底圆环实打实贴住内屏底边零浮空！
         const ptm = GameConst.physics3dPtm;
         const visHeight3D = visible.height / (machineScale * ptm);
-        const halfFovRad = toRadian(this.stage3DCamera.fov * 0.5);
-        const camDist = (visHeight3D * 0.5) / Math.tan(halfFovRad);
+        this.stage3DCamera.orthoHeight = visHeight3D * 0.5;
 
-        // 内屏中心相对于整机中心 (0, 0) 的偏移（像素）
         const inner = LayoutConfig.innerScreen;
         const innerCenterOffsetX = inner.x + inner.width * 0.5 - LayoutConfig.designWidth * 0.5;
         const innerCenterOffsetY = inner.y + inner.height * 0.5 - LayoutConfig.designHeight * 0.5;
 
-        // Tank3DRoot 原点对应缸坐标 (0, 0, 0)，将相机对准整机屏幕中心以消除窄屏/宽屏偏差
         this.tank3DRoot.setPosition(
             (-TankSpace.width * 0.5 + innerCenterOffsetX) / ptm,
             (-TankSpace.height * 0.5 + innerCenterOffsetY) / ptm,
             0,
         );
-        // 相机以 camera3dPitchDownDeg 轻微向下俯看整机中心：平躺在缸底的圈也能清晰露出立体圆环孔洞，不再像扁平药丸
-        const pitchDeg = GameConst.camera3dPitchDownDeg;
-        const pitchRad = toRadian(pitchDeg);
-        this.stage3DCamera.node.setPosition(0, camDist * Math.sin(pitchRad), camDist * Math.cos(pitchRad));
-        this.stage3DCamera.node.setRotationFromEuler(-pitchDeg, 0, 0);
+        this.stage3DCamera.node.setPosition(0, 0, 20);
+        this.stage3DCamera.node.setRotationFromEuler(0, 0, 0);
+
+        const geom = calcRingPillarGeometry(TankSpace.width);
+        const majorRadius3D = (geom.ringOuterDiameter * 0.5 - geom.ringThickness * 0.5) / ptm;
+        const zGroundRef = -majorRadius3D;
+        ensureObliqueShearSynced(Math.tan(toRadian(GameConst.camera3dPitchDownDeg)), zGroundRef);
     };
 }

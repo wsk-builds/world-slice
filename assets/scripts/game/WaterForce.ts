@@ -110,6 +110,7 @@ export class WaterForce extends Component {
             return;
         }
 
+        /** 静躺缸底时向 z=0 中平面的微回中（让靠后玻璃的圈自然滑向缸底中线，彻底消除视觉浮空） */
         const halfDepth = this.stepper.world.tank.halfDepth;
         const torqueScale = SolvedFeelConfig.tumbleTorqueScale;
         const zSwirl = SolvedFeelConfig.zSwirlSpeed;
@@ -119,6 +120,10 @@ export class WaterForce extends Component {
             const ring = rings[i];
             if (!ring.isValid || ring.locked || !ring.isBodyReady) {
                 continue;
+            }
+            const b = ring.body3D;
+            if (b.y < b.outerRadius * 1.35) {
+                b.applyCentralForce(0, 0, -b.z * b.mass * 5.5);
             }
             this.applyWaterToRing(ring, halfDepth, torqueScale, zSwirl, zCenterRate);
         }
