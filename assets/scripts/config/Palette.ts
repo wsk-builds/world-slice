@@ -79,4 +79,21 @@ export const Palette = {
         woodAccent: hex('#E2B488'),
         highlight: hex('#FFFFFF', 0.42),
     },
+
+    /** 调试调参面板配色 */
+    tuning: {
+        panelBg: hex('#131C26', 0.80),
+        panelBorder: hex('#64DFDF', 0.72),
+        exportBg: hex('#0D141C', 0.96),
+        btnFill: hex('#2B3B4E'),
+        btnActiveFill: hex('#2B6B73'),
+        btnMutedFill: hex('#232C37'),
+        btnBorder: hex('#7CA2BD'),
+        sliderTrack: hex('#2C3A4A'),
+        sliderFill: hex('#48C9B0'),
+        sliderKnob: hex('#E8F8F5'),
+        sliderDefaultMark: hex('#FFD166'),
+        accentText: hex('#76E5DC'),
+        mutedText: hex('#93A4B5'),
+    },
 } as const;

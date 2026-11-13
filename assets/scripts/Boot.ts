@@ -8,6 +8,7 @@ import { FlowField } from './core/flow/FlowField';
 import { Bladder } from './core/input/Bladder';
 import { PhysicsDebugDraw } from './debug/PhysicsDebugDraw';
 import { RingDebugSpawner } from './debug/RingDebugSpawner';
+import { TuningPanel } from './debug/TuningPanel';
 import { PhysicsStepper } from './game/PhysicsStepper';
 import { Pillar } from './game/Pillar';
 import { RingLayer } from './game/RingLayer';
@@ -71,6 +72,9 @@ export class Boot extends Component {
         // 外壳绘制在最上层，内屏位置挖空；左右喷射键挂在外壳之上
         ShellView.create(machine);
         JetButton.createPair(machine, leftBladder, rightBladder);
+        if (GameConst.DEBUG) {
+            TuningPanel.create(machine);
+        }
 
         this.fitMachine();
         view.on('canvas-resize', this.fitMachine, this);
