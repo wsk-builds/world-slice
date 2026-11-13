@@ -12,6 +12,7 @@ import { Pillar } from './game/Pillar';
 import { RingLayer } from './game/RingLayer';
 import { Tank } from './game/Tank';
 import { WaterForce } from './game/WaterForce';
+import { Bubbles } from './render/Bubbles';
 import { JetButton } from './ui/JetButton';
 import { ShellView } from './ui/ShellView';
 
@@ -47,6 +48,7 @@ export class Boot extends Component {
         const tankRoot = this.createTankRoot(machine);
         tankRoot.addComponent(PhysicsStepper);
         Tank.create(tankRoot);
+        Bubbles.create(tankRoot, flowField);
         Pillar.createPair(tankRoot);
         const ringLayer = RingLayer.create(tankRoot);
         WaterForce.attach(tankRoot, flowField, leftBladder, rightBladder, ringLayer);

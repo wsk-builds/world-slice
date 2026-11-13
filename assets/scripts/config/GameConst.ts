@@ -52,6 +52,9 @@ export const GameConst = {
 
     /** 水体涡流扰动随时间演化的频率（1/秒） */
     turbulenceTimeRate: 0.45,
+
+    /** 气泡池最大同时存在数量上限 */
+    bubblePoolMaxCount: 160,
 } as const;
 
 export interface RingPillarGeometry {

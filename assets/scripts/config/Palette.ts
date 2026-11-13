@@ -56,6 +56,10 @@ export const Palette = {
     nozzleFill: hex('#2E4C63'),
     nozzleBorder: hex('#64DFDF', 0.85),
 
+    /** 灰盒水流气泡颜色（浅青白半透 + 高光） */
+    bubbleFill: hex('#D8F6FF', 0.52),
+    bubbleHighlight: hex('#FFFFFF', 0.78),
+
     /** 灰盒悬空柱与底托 */
     pillarRodFill: hex('#DCE4EC'),
     pillarBaseFill: hex('#9FB3C8'),
