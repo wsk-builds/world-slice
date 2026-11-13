@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2015",
+    "module": "ES2015",
+    "strict": false,
+    "skipLibCheck": true,
+    "types": [
+      "./cocos-types/cc.custom-macro",
+      "./cocos-types/cc",
+      "./cocos-types/jsb",
+      "./cocos-types/cc.env",
+      "node"
+    ],
+    "paths": {
+      "db://assets/*": [
+        "../assets/*"
+      ]
+    },
+    "experimentalDecorators": true,
+    "isolatedModules": true,
+    "moduleResolution": "node",
+    "noEmit": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "../assets/**/*.ts",
+    "../tests/**/*.ts",
+    "../tools/**/*.ts"
+  ],
+  "exclude": [
+    "../node_modules",
+    "../library",
+    "../temp",
+    "../local",
+    "../build",
+    "../profiles"
+  ]
+}

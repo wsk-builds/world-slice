@@ -13,5 +13,13 @@
       "./temp/declarations/cc.env",
       "node"
     ]
-  }
+  },
+  "exclude": [
+    "node_modules",
+    ".cursor",
+    "library",
+    "local",
+    "build",
+    "profiles"
+  ]
 }

@@ -5,7 +5,8 @@
     "version": "3.8.8"
   },
   "scripts": {
-    "check": "tsc --noEmit",
+    "check": "node tools/check.mjs",
+    "check:cloud": "tsc -p .cursor/tsconfig.cloud.json --noEmit",
     "test": "vitest run tests"
   },
   "devDependencies": {
