@@ -6,9 +6,9 @@ import { FlowField, FlowSide, FlowVec2 } from '../core/flow/FlowField';
 /** 气泡数量上限（读取全局常量） */
 export const MAX_BUBBLES = GameConst.bubblePoolMaxCount;
 
-const AMBIENT_TARGET_COUNT = 22;
-const AMBIENT_SPAWN_PER_SEC = 6.5;
-const JET_SPAWN_PER_SEC = 105;
+const AMBIENT_TARGET_COUNT = 16;
+const AMBIENT_SPAWN_PER_SEC = 5;
+const JET_SPAWN_PER_SEC = 38;
 const JET_MIN_LEVEL = 0.02;
 
 /** 低于此水速时 1:1 跟随，高出部分平滑饱和以兼顾海眼喷柱感与环流辨识度 */
@@ -152,7 +152,7 @@ export class BubblePool {
     }
 
     private seedInitialAmbient(): void {
-        const count = Math.min(16, this.maxCount);
+        const count = Math.min(12, this.maxCount);
         for (let i = 0; i < count; i++) {
             const slot = this.acquireSlot('ambient');
             if (!slot) {
@@ -258,9 +258,9 @@ export class BubblePool {
             const along = this.rng.range(6, 22);
             const x = nozzle.x + nozzle.axisX * along + nozzle.axisY * offsetAcross;
             const y = nozzle.y + nozzle.axisY * along - nozzle.axisX * offsetAcross;
-            const radius = this.rng.range(2.4, 6.4);
-            const buoyancy = this.rng.range(26, 52);
-            const life = this.rng.range(2.2, 3.6);
+            const radius = this.rng.range(2.2, 5.4);
+            const buoyancy = this.rng.range(24, 46);
+            const life = this.rng.range(1.9, 3.0);
             this.activateBubble(slot, 'jet', x, y, radius, buoyancy, life);
         }
 

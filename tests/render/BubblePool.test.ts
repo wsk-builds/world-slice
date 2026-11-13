@@ -35,15 +35,15 @@ describe('BubblePool', () => {
         }
         const ambientOnly = pool.activeCount;
         expect(ambientOnly).toBeGreaterThan(5);
-        expect(ambientOnly).toBeLessThanOrEqual(28);
+        expect(ambientOnly).toBeLessThanOrEqual(20);
 
-        // 左海眼喷水 0.4 秒，气泡数明显暴涨且集中出现在左海眼上方
+        // 左海眼喷水 0.4 秒，气泡数明显增多且集中出现在左海眼上方
         flow.setJetInputs(1, 0);
         for (let i = 0; i < 24; i++) {
             flow.step(1 / 60);
             pool.step(1 / 60);
         }
-        expect(pool.activeCount).toBeGreaterThan(ambientOnly + 25);
+        expect(pool.activeCount).toBeGreaterThan(ambientOnly + 10);
 
         const leftNozzleX = flow.jet.getNozzlePose('left').x;
         let nearLeftNozzle = 0;
@@ -60,7 +60,7 @@ describe('BubblePool', () => {
                 nearRightNozzle++;
             }
         }
-        expect(nearLeftNozzle).toBeGreaterThan(20);
+        expect(nearLeftNozzle).toBeGreaterThan(10);
         expect(nearRightNozzle).toBe(0);
     });
 
