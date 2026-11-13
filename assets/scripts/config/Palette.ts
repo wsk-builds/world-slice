@@ -23,9 +23,12 @@ export const Palette = {
     chinFill: hex('#343C47'),
     chinBorder: hex('#7F8C99'),
 
-    /** 左右喷射键占位 */
+    /** 左右喷射键与凹槽阴影 */
+    jetBtnShadow: hex('#262E38'),
     jetBtnFill: hex('#D96B52'),
+    jetBtnPressedFill: hex('#BE533B'),
     jetBtnBorder: hex('#F4A28C'),
+    jetBtnHighlight: hex('#FFFFFF', 0.2),
 
     /** 四个道具键占位 */
     itemBtnFill: hex('#4A7C78'),
@@ -47,9 +50,11 @@ export const Palette = {
     labelPrimary: hex('#EEF2F6'),
     labelMuted: hex('#B8C4D0'),
 
-    /** 水缸内底角垫块与内壁线 */
+    /** 水缸内底角垫块、内壁线与灰盒海眼喷口 */
     tankCornerFill: hex('#273645'),
     tankWallBorder: hex('#52798F'),
+    nozzleFill: hex('#2E4C63'),
+    nozzleBorder: hex('#64DFDF', 0.85),
 
     /** 灰盒悬空柱与底托 */
     pillarRodFill: hex('#DCE4EC'),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FeelConfig } from '../../../assets/scripts/config/FeelConfig';
-import { Bladder } from '../../../assets/scripts/core/input/Bladder';
+import { Bladder, calcSoftCapPose } from '../../../assets/scripts/core/input/Bladder';
 
 /** 按固定物理步长推进指定时长，累计总出水量 ∫ output dt（步前采样，与 WaterForce 每步前喂强度一致） */
 function simulateHoldWater(bladder: Bladder, holdSec: number, dt = 1 / 60): number {
@@ -190,5 +190,32 @@ describe('Bladder 气囊模型（T007）', () => {
         expect(bladder.pressed).toBe(false);
         expect(bladder.reserve).toBe(1);
         expect(bladder.output).toBe(0);
+    });
+
+    it('软胶键帽下陷姿态随气囊余量平滑下沉与回弹（位移加缩放）', () => {
+        const idle = calcSoftCapPose(false, 1);
+        expect(idle.depth).toBe(0);
+        expect(idle.offsetY).toBe(0);
+        expect(idle.scaleX).toBe(1);
+        expect(idle.scaleY).toBe(1);
+
+        const justPressed = calcSoftCapPose(true, 1);
+        expect(justPressed.depth).toBeGreaterThan(0.25);
+        expect(justPressed.offsetY).toBeLessThan(0);
+        expect(justPressed.scaleX).toBeLessThan(1);
+        expect(justPressed.scaleY).toBeLessThan(1);
+
+        const halfDrained = calcSoftCapPose(true, 0.5);
+        const emptyPressed = calcSoftCapPose(true, 0);
+        expect(halfDrained.depth).toBeGreaterThan(justPressed.depth);
+        expect(emptyPressed.depth).toBeCloseTo(1, 6);
+        expect(emptyPressed.offsetY).toBeLessThan(halfDrained.offsetY);
+        expect(emptyPressed.scaleY).toBeLessThan(halfDrained.scaleY);
+
+        // 松手回弹途中余量从 0 -> 0.5 -> 1，下陷深度单调回到 0
+        const releaseEmpty = calcSoftCapPose(false, 0);
+        const releaseHalf = calcSoftCapPose(false, 0.5);
+        expect(releaseEmpty.depth).toBeCloseTo(1, 6);
+        expect(releaseHalf.depth).toBeCloseTo(0.5, 6);
     });
 });

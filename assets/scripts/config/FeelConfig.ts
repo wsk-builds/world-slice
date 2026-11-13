@@ -24,10 +24,12 @@ export interface FeelParams {
      * 基准下沉加速度（像素/秒²），配合 ringLinearDamping=2.5 约 3 秒沉底
      */
     baseSinkAccel: number;
-    /** 圈的线性阻尼（模拟水的粘滞阻力） */
+    /** 圈的线性阻尼（模拟水的底噪粘滞阻力，主要水流阻尼由 flowFollowRate 提供） */
     ringLinearDamping: number;
     /** 圈的角阻尼（抑制旋转疯转） */
     ringAngularDamping: number;
+    /** 圈对水流的基准跟随度（1/秒），乘以圈种 flowFollow 后按 跟随度×(水速-端点速度) 施力 */
+    flowFollowRate: number;
     /** 圈横条碰撞摩擦系数 */
     ringFriction: number;
     /** 圈碰撞弹性系数 */
@@ -53,14 +55,15 @@ export const DEFAULT_FEEL_CONFIG: Readonly<FeelParams> = {
     jetAfterglowSec: 0.28,
     bladderMaxBreathSec: 0.65,
     bladderRefillSec: 0.22,
-    baseSinkAccel: 525,
-    ringLinearDamping: 2.5,
-    ringAngularDamping: 3.0,
+    baseSinkAccel: 775,
+    ringLinearDamping: 0.5,
+    ringAngularDamping: 4.0,
+    flowFollowRate: 3.5,
     ringFriction: 0.03,
     ringRestitution: 0.12,
-    jetMaxSpeed: 1100,
-    circulationMaxSpeed: 220,
-    circulationChargeRate: 1.8,
+    jetMaxSpeed: 7600,
+    circulationMaxSpeed: 300,
+    circulationChargeRate: 2.4,
     turbulenceBaseSpeed: 10,
     turbulenceFlowSpeed: 22,
 };

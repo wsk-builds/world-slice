@@ -1,7 +1,8 @@
 import {
     _decorator, BoxCollider2D, Component, ERigidBody2DType, Graphics, Layers, Node, PolygonCollider2D, RigidBody2D,
-    Size, UITransform, Vec2,
+    Size, toRadian, UITransform, Vec2,
 } from 'cc';
+import { FeelConfig } from '../config/FeelConfig';
 import { Palette } from '../config/Palette';
 import { PhysicsGroupBit } from '../config/PhysicsGroups';
 import { TankSpace } from '../config/TankSpace';
@@ -10,12 +11,13 @@ import { buildTankGeometry, TankGeometryData } from './TankGeometry';
 const { ccclass } = _decorator;
 
 /**
- * 水缸边界：静态物理墙体（四面直墙 + 左右向内圆弧底角折线）与灰盒内壁绘制。
+ * 水缸边界：静态物理墙体（四面直墙 + 左右向内圆弧底角折线）、灰盒内壁与海眼标记绘制。
  * 节点原点位于内屏左下角（缸坐标原点）。
  */
 @ccclass('Tank')
 export class Tank extends Component {
     private geometry: TankGeometryData | null = null;
+    private gfx: Graphics | null = null;
 
     static create(tankRoot: Node): Tank {
         const node = new Node('Tank');
@@ -36,7 +38,18 @@ export class Tank extends Component {
         this.geometry = geom;
 
         this.createWallColliders(geom);
-        this.drawWalls(geom);
+        this.gfx = this.node.getComponent(Graphics) ?? this.node.addComponent(Graphics);
+        this.redraw();
+    }
+
+    /** 按最新几何与海眼位置重绘水缸底色、圆弧底角及左右海眼标记（共用同一 Graphics） */
+    redraw(): void {
+        if (!this.gfx || !this.geometry) {
+            return;
+        }
+        this.gfx.clear();
+        this.drawWalls(this.gfx, this.geometry);
+        this.drawNozzles(this.gfx);
     }
 
     private createWallColliders(geom: TankGeometryData): void {
@@ -64,8 +77,7 @@ export class Tank extends Component {
         }
     }
 
-    private drawWalls(geom: TankGeometryData): void {
-        const gfx = this.node.addComponent(Graphics);
+    private drawWalls(gfx: Graphics, geom: TankGeometryData): void {
         const { width, height, leftCornerArc, rightCornerArc } = geom;
 
         // 内屏深水底色（与水缸内壁共用同一 Graphics，省去 TankRoot 独立 Graphics 显存）
@@ -111,6 +123,36 @@ export class Tank extends Component {
         }
         gfx.lineTo(width, height);
         gfx.lineTo(rightTop.x, height);
+        gfx.stroke();
+    }
+
+    /** 在缸底绘制左右海眼出水口灰盒标识（无碰撞体，仅标示喷口位置与内倾朝向） */
+    private drawNozzles(gfx: Graphics): void {
+        const leftX = TankSpace.pctToPxX(FeelConfig.nozzlePosPct);
+        const rightX = TankSpace.pctToPxX(100 - FeelConfig.nozzlePosPct);
+        const tiltRad = toRadian(FeelConfig.nozzleTiltDeg);
+
+        this.drawSingleNozzle(gfx, leftX, tiltRad);
+        this.drawSingleNozzle(gfx, rightX, -tiltRad);
+    }
+
+    private drawSingleNozzle(gfx: Graphics, centerX: number, tiltRad: number): void {
+        const baseHalfW = 28;
+        const mouthHalfW = 19;
+        const spoutH = 14;
+        const shiftX = Math.sin(tiltRad) * spoutH;
+        const topY = Math.cos(tiltRad) * spoutH;
+
+        gfx.fillColor = Palette.nozzleFill;
+        gfx.strokeColor = Palette.nozzleBorder;
+        gfx.lineWidth = 2;
+
+        gfx.moveTo(centerX - baseHalfW, 1);
+        gfx.lineTo(centerX + baseHalfW, 1);
+        gfx.lineTo(centerX + shiftX + mouthHalfW, topY);
+        gfx.lineTo(centerX + shiftX - mouthHalfW, topY);
+        gfx.close();
+        gfx.fill();
         gfx.stroke();
     }
 

@@ -35,8 +35,14 @@ export const GameConst = {
     /** 底角折线外推厚度（像素），确保每段为严格凸四边形 */
     tankCornerStripThickness: 14,
 
-    /** 海眼喷口初始半宽（像素，对应 GDD 附录海眼 80×40） */
-    jetMouthHalfWidth: 32,
+    /** 海眼喷口初始半宽（像素，覆盖中号圈两端点间距 ±52.7px 且不侵入 90px 底角圆弧） */
+    jetMouthHalfWidth: 64,
+
+    /** 喷射键点击热区向四周外扩像素（点击范围比图形大，GDD 画面铁律） */
+    jetBtnHitPadding: 24,
+
+    /** 灰盒默认随机种子（T016 改为从关卡数据读取） */
+    defaultLevelSeed: 1024,
 
     /** 主喷流下窄上宽锥形半张角（度） */
     jetHalfAngleDeg: 14,

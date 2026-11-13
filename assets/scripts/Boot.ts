@@ -1,13 +1,18 @@
 import { _decorator, Canvas, Component, Layers, Node, PhysicsSystem2D, screen, UITransform, view } from 'cc';
+import { GameConst } from './config/GameConst';
 import { calcMachineScale, LayoutConfig } from './config/LayoutConfig';
 import { Palette } from './config/Palette';
 import { applyCollisionMatrix } from './config/PhysicsGroups';
+import { FlowField } from './core/flow/FlowField';
+import { Bladder } from './core/input/Bladder';
 import { PhysicsDebugDraw } from './debug/PhysicsDebugDraw';
 import { RingDebugSpawner } from './debug/RingDebugSpawner';
 import { PhysicsStepper } from './game/PhysicsStepper';
 import { Pillar } from './game/Pillar';
 import { RingLayer } from './game/RingLayer';
 import { Tank } from './game/Tank';
+import { WaterForce } from './game/WaterForce';
+import { JetButton } from './ui/JetButton';
 import { ShellView } from './ui/ShellView';
 
 const { ccclass } = _decorator;
@@ -34,18 +39,24 @@ export class Boot extends Component {
         this.machineNode = machine;
         this.fitMachine();
 
+        const leftBladder = new Bladder();
+        const rightBladder = new Bladder();
+        const flowField = new FlowField({ seed: GameConst.defaultLevelSeed });
+
         // 内屏节点（原点在机身内屏左下角），位于外壳之下
         const tankRoot = this.createTankRoot(machine);
         tankRoot.addComponent(PhysicsStepper);
         Tank.create(tankRoot);
         Pillar.createPair(tankRoot);
         const ringLayer = RingLayer.create(tankRoot);
+        WaterForce.attach(tankRoot, flowField, leftBladder, rightBladder, ringLayer);
         const ringSpawner = tankRoot.addComponent(RingDebugSpawner);
         ringSpawner.ringLayer = ringLayer;
         tankRoot.addComponent(PhysicsDebugDraw);
 
-        // 外壳绘制在最上层，内屏位置挖空
+        // 外壳绘制在最上层，内屏位置挖空；左右喷射键挂在外壳之上
         ShellView.create(machine);
+        JetButton.createPair(machine, leftBladder, rightBladder);
 
         this.fitMachine();
         view.on('canvas-resize', this.fitMachine, this);

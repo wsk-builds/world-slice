@@ -149,22 +149,6 @@ export class ShellView extends Component {
                 radius: 8,
             },
             {
-                rect: LayoutConfig.leftJetBtn,
-                text: '左喷射键\n220×220',
-                fill: Palette.jetBtnFill,
-                border: Palette.jetBtnBorder,
-                fontSize: 24,
-                radius: 28,
-            },
-            {
-                rect: LayoutConfig.rightJetBtn,
-                text: '右喷射键\n220×220',
-                fill: Palette.jetBtnFill,
-                border: Palette.jetBtnBorder,
-                fontSize: 24,
-                radius: 28,
-            },
-            {
                 rect: LayoutConfig.itemBtns.waterHourglass,
                 text: '玉水漏\n100×100',
                 fill: Palette.itemBtnFill,

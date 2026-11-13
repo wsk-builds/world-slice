@@ -141,3 +141,37 @@ export class Bladder {
         this._reserve = next >= 1 - EPSILON ? 1 : next;
     }
 }
+
+export interface SoftCapPose {
+    /** 归一化按压深度（0 = 完全弹起，1 = 压到底） */
+    depth: number;
+    /** 键帽向下的位移（像素，0 或负数） */
+    offsetY: number;
+    /** 键帽水平缩放 */
+    scaleX: number;
+    /** 键帽竖直缩放 */
+    scaleY: number;
+}
+
+const INITIAL_PRESS_DEPTH = 0.34;
+const MAX_CAP_SINK_PX = 14;
+const MAX_SQUASH_X = 0.05;
+const MAX_SQUASH_Y = 0.10;
+
+/**
+ * 根据按压状态与气囊余量（0–1）计算软胶喷射键的下陷位移与缩放（GDD §2.2、§8，纯逻辑）。
+ */
+export function calcSoftCapPose(pressed: boolean, reserve: number): SoftCapPose {
+    const clampedReserve = reserve <= 0 ? 0 : reserve >= 1 ? 1 : reserve;
+    const depletion = 1 - clampedReserve;
+    const depth = pressed
+        ? INITIAL_PRESS_DEPTH + (1 - INITIAL_PRESS_DEPTH) * depletion
+        : depletion;
+
+    return {
+        depth,
+        offsetY: depth > 0 ? -depth * MAX_CAP_SINK_PX : 0,
+        scaleX: 1 - depth * MAX_SQUASH_X,
+        scaleY: 1 - depth * MAX_SQUASH_Y,
+    };
+}
