@@ -1,6 +1,7 @@
 import { _decorator, Component, EventKeyboard, EventTouch, Input, input, KeyCode, Node, UITransform, Vec3 } from 'cc';
 import { GameConst } from '../config/GameConst';
 import { DEBUG_RING_SLOTS, ringSpecLabel, RingSpec } from '../core/rings/RingKinds';
+import { PhysicsStepper } from '../game/PhysicsStepper';
 import { RingLayer } from '../game/RingLayer';
 import { ScoreJudge } from '../game/ScoreJudge';
 
@@ -18,9 +19,11 @@ const tempVec3 = new Vec3();
 export class RingDebugSpawner extends Component {
     ringLayer: RingLayer | null = null;
     scoreJudge: ScoreJudge | null = null;
+    onClearAll: (() => void) | null = null;
 
     private slotIndex = 0;
     private tankTransform: UITransform | null = null;
+    private stepper: PhysicsStepper | null = null;
 
     get currentSpec(): RingSpec {
         return DEBUG_RING_SLOTS[this.slotIndex];
@@ -28,6 +31,7 @@ export class RingDebugSpawner extends Component {
 
     onLoad(): void {
         this.tankTransform = this.getComponent(UITransform);
+        this.stepper = this.getComponent(PhysicsStepper) ?? this.node.parent?.getComponent(PhysicsStepper) ?? null;
     }
 
     onEnable(): void {
@@ -44,7 +48,7 @@ export class RingDebugSpawner extends Component {
     }
 
     private onTouchStart = (event: EventTouch): void => {
-        if (!this.ringLayer || !this.tankTransform) {
+        if (!this.ringLayer || !this.tankTransform || (this.stepper && !this.stepper.running)) {
             return;
         }
         const uiLoc = event.getUILocation();
@@ -62,6 +66,7 @@ export class RingDebugSpawner extends Component {
         if (event.keyCode === KeyCode.KEY_R) {
             this.ringLayer?.clearAll();
             this.scoreJudge?.reset();
+            this.onClearAll?.();
             console.log('[RingDebug] 已清空所有圈');
         }
     };

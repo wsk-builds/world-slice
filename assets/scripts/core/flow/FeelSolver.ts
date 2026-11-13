@@ -23,7 +23,7 @@ const MAX_JET_SPEED = 60000;
 export interface SolvedFunnelParams {
     /** 柱尖碗口吸纳半径（像素） */
     radiusPx: number;
-    /** 允许触发入柱宽容的最大倾角（度，0.5 旋钮对应 35°） */
+    /** 允许触发入柱宽容的最大倾角（度，0.5 旋钮对应 35°，默认 0.1 对应 7°） */
     maxAngleDeg: number;
     /** 朝柱心的居中加速度（像素/秒²） */
     pullAccel: number;

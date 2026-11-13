@@ -118,7 +118,7 @@ export class WaterForce extends Component {
 
         for (let i = 0; i < rings.length; i++) {
             const ring = rings[i];
-            if (!ring.isValid || ring.locked || !ring.isBodyReady) {
+            if (!ring.isValid || ring.locked || ring.clearing || !ring.isBodyReady) {
                 continue;
             }
             const b = ring.body3D;

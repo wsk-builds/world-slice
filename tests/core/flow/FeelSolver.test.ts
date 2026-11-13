@@ -15,7 +15,7 @@ describe('FeelSolver 体感参数换算（T010）', () => {
         applyFeel(DEFAULT_FEEL_CONFIG);
     });
 
-    it('FeelConfig 暴露完整 12 个体感参数且起始值符合 GDD §3.4 / T010', () => {
+    it('FeelConfig 暴露完整 12 个体感参数且起始值符合 GDD §3.4 / T010（入柱宽容默认 10%）', () => {
         expect(Object.keys(DEFAULT_FEEL_CONFIG).length).toBe(12);
         expect(DEFAULT_FEEL_CONFIG).toEqual({
             sinkSec: 3,
@@ -29,7 +29,7 @@ describe('FeelSolver 体感参数换算（T010）', () => {
             nozzleTiltDeg: 10,
             circulationDecaySec: 1.75,
             tumbleSensitivity: 0.5,
-            funnelTolerance: 0.5,
+            funnelTolerance: 0.1,
         });
     });
 
@@ -102,11 +102,14 @@ describe('FeelSolver 体感参数换算（T010）', () => {
         expect(highTumble.tumbleTorqueScale).toBeGreaterThan(midTumble.tumbleTorqueScale);
 
         const zeroFunnel = solveFeel({ ...DEFAULT_FEEL_CONFIG, funnelTolerance: 0 });
+        const default10Funnel = solveFeel(DEFAULT_FEEL_CONFIG);
         const midFunnel = solveFeel({ ...DEFAULT_FEEL_CONFIG, funnelTolerance: 0.5 });
         const maxFunnel = solveFeel({ ...DEFAULT_FEEL_CONFIG, funnelTolerance: 1 });
 
         expect(zeroFunnel.funnel.radiusPx).toBe(0);
         expect(zeroFunnel.funnel.pullAccel).toBe(0);
+        expect(default10Funnel.funnel.maxAngleDeg).toBeCloseTo(7, 6);
+        expect(default10Funnel.funnel.radiusPx).toBeCloseTo(midFunnel.funnel.radiusPx * 0.2, 6);
         expect(midFunnel.funnel.maxAngleDeg).toBeCloseTo(35, 6);
         expect(maxFunnel.funnel.radiusPx).toBeGreaterThan(midFunnel.funnel.radiusPx);
         expect(maxFunnel.funnel.pullAccel).toBeGreaterThan(midFunnel.funnel.pullAccel);

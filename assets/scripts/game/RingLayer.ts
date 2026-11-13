@@ -98,6 +98,30 @@ export class RingLayer extends Component {
         return ring;
     }
 
+    /** 仅从物理世界中移除刚体（闪烁期间保留节点演出但不阻挡新圈落槽） */
+    detachBodyFromWorld(ring: Ring): void {
+        if (ring.isBodyReady) {
+            this.stepper?.world.removeBody(ring.body3D);
+        }
+    }
+
+    /** 彻底销毁指定圈并从管理层与物理世界移除 */
+    destroyRing(ring: Ring): void {
+        this.detachBodyFromWorld(ring);
+        const idx = this.rings.indexOf(ring);
+        if (idx >= 0) {
+            this.rings.splice(idx, 1);
+        }
+        if (ring.isValid) {
+            ring.node.destroy();
+        }
+    }
+
+    /** 重置初始放圈随机种子（重开或切关时保证可复现） */
+    resetSpawnRng(seed: number = GameConst.defaultLevelSeed): void {
+        this.spawnRng = new SeededRandom(seed ^ 0x5f3759df);
+    }
+
     /** 清空所有圈与刚体 */
     clearAll(): void {
         for (const ring of this.rings) {
@@ -119,6 +143,9 @@ export class RingLayer extends Component {
             const ring = this.rings[i];
             if (!ring.isValid) {
                 this.rings.splice(i, 1);
+                continue;
+            }
+            if (ring.clearing) {
                 continue;
             }
             ring.applyConfig();
@@ -145,7 +172,7 @@ export class RingLayer extends Component {
                 this.rings.splice(i, 1);
                 continue;
             }
-            if (ring.locked || !ring.isBodyReady) {
+            if (ring.locked || ring.clearing || !ring.isBodyReady) {
                 continue;
             }
             const accelPx = SolvedFeelConfig.baseSinkAccel * ring.kindConfig.sinkScale;

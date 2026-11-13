@@ -106,4 +106,23 @@ describe('LayoutConfig', () => {
         expect(calcMachineScale(1334, 750)).toBeCloseTo(1334 / 1624, 6);
         expect(calcMachineScale(812, 375)).toBeCloseTo(0.5, 6);
     });
+
+    it('HUD 结算弹窗卡片与按钮均严格位于内屏内部，且与调参按钮不重叠', () => {
+        const { innerScreen, hudCard, hudActionBtn, pauseBtn, levelLabel, countdown } = LayoutConfig;
+        expect(hudCard.x).toBeGreaterThanOrEqual(innerScreen.x);
+        expect(hudCard.y).toBeGreaterThanOrEqual(innerScreen.y);
+        expect(hudCard.x + hudCard.width).toBeLessThanOrEqual(innerScreen.x + innerScreen.width);
+        expect(hudCard.y + hudCard.height).toBeLessThanOrEqual(innerScreen.y + innerScreen.height);
+
+        expect(hudActionBtn.x).toBeGreaterThanOrEqual(hudCard.x);
+        expect(hudActionBtn.y).toBeGreaterThanOrEqual(hudCard.y);
+        expect(hudActionBtn.x + hudActionBtn.width).toBeLessThanOrEqual(hudCard.x + hudCard.width);
+        expect(hudActionBtn.y + hudActionBtn.height).toBeLessThanOrEqual(hudCard.y + hudCard.height);
+
+        // 左上角调参按钮（x:24..136, y:596..644）位于暂停键（y>=662）与关卡号（y>=670）下方，留有间隙
+        expect(pauseBtn.y).toBeGreaterThan(644);
+        expect(levelLabel.y).toBeGreaterThan(644);
+        // 倒计时位于内屏上沿正中
+        expect(countdown.y).toBeGreaterThan(innerScreen.y + innerScreen.height);
+    });
 });

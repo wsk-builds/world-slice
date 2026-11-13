@@ -107,6 +107,84 @@ export const GameConst = {
 
     /** 圈心相对目标槽位高度的容差（像素） */
     ringLockSlotMarginPx: 24,
+
+    /** 同款消除时被消双圈闪烁持续时间（秒） */
+    matchFlashDurationSec: 0.22,
+
+    /** 柱上仍有紧邻同色圈正在稳定时，暂缓触发消除的最长等待时间（秒，防卡死） */
+    matchDeferMaxSec: 1.2,
+
+    /** 同款消除后上方已锁圈启动平滑下落的延迟时间（秒，待双圈闪亮缩隐后再落） */
+    matchDropDelaySec: 0.1,
+
+    /** 同款消除后上方已锁圈沿 Y 轴平滑下落速度（像素/秒） */
+    matchDropSpeedPxPerSec: 260,
+
+    /** 同款消除后上方已锁圈平滑下落最短耗时（秒） */
+    matchDropMinDurationSec: 0.12,
+
+    /** 同款消除后上方已锁圈平滑下落最长耗时（秒） */
+    matchDropMaxDurationSec: 0.26,
+
+    /** 灰盒与默认关卡倒计时（秒，GDD §3.4 为 60–90 秒） */
+    defaultLevelDurationSec: 60,
+
+    /** 倒计时最后提示变色阈值（秒） */
+    countdownUrgentSec: 10,
+
+    /** 暂停/弹窗按键点击热区外扩像素（GDD 画面铁律：点击范围比图形大） */
+    hudBtnHitPadding: 10,
+
+    /** 默认进入的关卡编号 */
+    defaultLevelId: 'X01',
+
+    /** 单关同时出现的圈种上限（GDD §2.1：最多 5 种，配合柱容量 6 保证永不锁死） */
+    maxLevelRingSpecies: 5,
+
+    /** 关卡数据百分比坐标安全范围（0~100，避开贴壁边缘） */
+    levelPosMinXPct: 3,
+    levelPosMaxXPct: 97,
+    levelPosMinYPct: 2,
+    levelPosMaxYPct: 98,
+
+    /** 关卡随机摆位时圈与圈、圈与柱之间的最小间隙（像素） */
+    levelRingSpawnGapPx: 6,
+
+    /** 开局随机圈落到两根柱子之一的触发概率（约 5%，100 局约 5 局） */
+    startPillarDropChance: 0.05,
+
+    /** 套中锁定一次增加的柱子能量（%，GDD §2.1） */
+    energyLockGainPct: 10,
+
+    /** 消除 2 个同款圈额外增加的能量（%） */
+    energyMatchBonus2Pct: 20,
+
+    /** 消除 3 个同款圈额外增加的能量（%） */
+    energyMatchBonus3Pct: 30,
+
+    /** 消除 4 个同款圈额外增加的能量（%） */
+    energyMatchBonus4Pct: 40,
+
+    /** 默认消除额外加能量（2 个圈消除为 20%，保留字段供兼容参考） */
+    energyMatchBonusPct: 20,
+
+    /** 柱子满能量触发技能的阈值（%） */
+    energyMaxPct: 100,
+
+    /** 十字四翼卡托发光刻度格数（每格对应 10%） */
+    energyTickCount: 10,
+
+    /** 柱子技能默认持续时间（秒，期间暂停本柱充能，供 T018/T019 接管） */
+    pillarSkillDurationSec: 5,
+
+    /** 充满触发技能瞬间柱尖灵珠闪光时长（秒） */
+    pillarOrbFlashDurationSec: 0.45,
+
+    /** 柱尖 3D 灵珠小球半径（像素） */
+    pillarOrbRadiusPx: 6.8,
+
+    /** 柱尖 3D 灵珠底部相对柱尖顶点的留隙（像素） */
+    pillarOrbTipGapPx: 2.0,
 } as const;
 
 export interface RingPillarGeometry {

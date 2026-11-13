@@ -1,0 +1,27 @@
+{
+  "id": "X01",
+  "title": "X01 · 6 圈",
+  "durationSec": 60,
+  "type": "normal",
+  "seed": 1001,
+  "pillarEnergy": {
+    "left": true,
+    "right": true
+  },
+  "rings": [
+    { "kind": "normal", "color": "red", "pos": { "xPct": 18, "yPct": 22 } },
+    { "kind": "normal", "color": "red", "pos": "random" },
+    { "kind": "normal", "color": "green", "pos": { "xPct": 82, "yPct": 22 } },
+    { "kind": "normal", "color": "green", "pos": "random" },
+    { "kind": "normal", "color": "blue", "pos": "random" },
+    { "kind": "normal", "color": "blue", "pos": "random" }
+  ],
+  "mechanisms": [],
+  "actors": [],
+  "narrative": {
+    "slateTitle": "灰盒试验一",
+    "slateSubtitle": "轻点与长按喷射，把 6 枚锁脉环套上两根柱子。",
+    "chinCue": "深海试水：点按左右喷射键，将 6 枚锁脉环套入双柱。"
+  },
+  "note": "灰盒试验关 1：6 圈入门（红绿蓝各 2，3 对全可消），双柱充能开启便于灰盒实测充能与技能触发"
+}

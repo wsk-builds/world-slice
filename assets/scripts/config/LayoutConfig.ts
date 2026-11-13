@@ -44,6 +44,15 @@ const COUNTDOWN_Y = 690;
 const MIASMA_WIDTH = 300;
 const MIASMA_HEIGHT = 24;
 
+const HUD_CARD_WIDTH = 420;
+const HUD_CARD_HEIGHT = 248;
+const HUD_CARD_X = INNER_X + (INNER_WIDTH - HUD_CARD_WIDTH) / 2;
+const HUD_CARD_Y = INNER_Y + (INNER_HEIGHT - HUD_CARD_HEIGHT) / 2;
+const HUD_ACTION_BTN_WIDTH = 200;
+const HUD_ACTION_BTN_HEIGHT = 54;
+const HUD_ACTION_BTN_X = HUD_CARD_X + (HUD_CARD_WIDTH - HUD_ACTION_BTN_WIDTH) / 2;
+const HUD_ACTION_BTN_Y = HUD_CARD_Y + 28;
+
 /**
  * 整机灰盒与正式版基准布局常量（1624 × 750）。
  * 坐标系原点位于机身左下角，x 向右，y 向上。
@@ -170,6 +179,22 @@ export const LayoutConfig = {
         y: 654,
         width: 242,
         height: 76,
+    } as LayoutRect,
+
+    /** 灰盒暂停/结算弹窗卡片（居中于内屏） */
+    hudCard: {
+        x: HUD_CARD_X,
+        y: HUD_CARD_Y,
+        width: HUD_CARD_WIDTH,
+        height: HUD_CARD_HEIGHT,
+    } as LayoutRect,
+
+    /** 灰盒暂停/结算弹窗主操作按钮 */
+    hudActionBtn: {
+        x: HUD_ACTION_BTN_X,
+        y: HUD_ACTION_BTN_Y,
+        width: HUD_ACTION_BTN_WIDTH,
+        height: HUD_ACTION_BTN_HEIGHT,
     } as LayoutRect,
 } as const;
 

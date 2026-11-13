@@ -65,6 +65,19 @@ export const Palette = {
     pillarBaseFill: hex('#2C826C'),
     pillarBorder: hex('#8EE6CE'),
 
+    /** 柱子充能刻度与柱尖灵珠配色（T017） */
+    pillarEnergy: {
+        tickDisabled: hex('#1C3631'),
+        tickOff: hex('#214E45'),
+        tickLit: hex('#5CE6D0'),
+        tickSkill: hex('#FFE066'),
+        orbDisabled: hex('#243E3A'),
+        orbIdle: hex('#3FA896'),
+        orbCharged: hex('#7CF7E8'),
+        orbSkill: hex('#FFD95A'),
+        orbFlash: hex('#FFF7CC'),
+    },
+
     /** 灰盒七种锁脉环配色 */
     ring: {
         red: hex('#EE5253'),
@@ -78,6 +91,22 @@ export const Palette = {
         wood: hex('#B57642'),
         woodAccent: hex('#E2B488'),
         highlight: hex('#FFFFFF', 0.42),
+    },
+
+    /** 灰盒 HUD 配色 */
+    hud: {
+        countdownNormal: hex('#EEF2F6'),
+        countdownUrgent: hex('#FF6B6B'),
+        pauseBtnActive: hex('#364D63'),
+        overlayBackdrop: hex('#0B1219', 0.62),
+        cardBg: hex('#1C2836', 0.96),
+        cardBorder: hex('#64DFDF'),
+        cardWonBorder: hex('#48C9B0'),
+        cardLostBorder: hex('#FF6B6B'),
+        actionBtnFill: hex('#2B6B73'),
+        actionBtnBorder: hex('#8EE6CE'),
+        actionBtnLostFill: hex('#7A3844'),
+        actionBtnLostBorder: hex('#FF9AA2'),
     },
 
     /** 调试调参面板配色 */

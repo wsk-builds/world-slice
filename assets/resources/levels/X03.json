@@ -1,0 +1,33 @@
+{
+  "id": "X03",
+  "title": "X03 · 12 圈",
+  "durationSec": 90,
+  "type": "normal",
+  "seed": 3003,
+  "pillarEnergy": {
+    "left": true,
+    "right": false
+  },
+  "rings": [
+    { "kind": "normal", "color": "red", "pos": { "xPct": 16, "yPct": 22 } },
+    { "kind": "normal", "color": "red", "pos": "random" },
+    { "kind": "normal", "color": "red", "pos": "random" },
+    { "kind": "normal", "color": "green", "pos": { "xPct": 84, "yPct": 22 } },
+    { "kind": "normal", "color": "green", "pos": "random" },
+    { "kind": "normal", "color": "green", "pos": "random" },
+    { "kind": "normal", "color": "blue", "pos": { "xPct": 46, "yPct": 18 } },
+    { "kind": "normal", "color": "blue", "pos": "random" },
+    { "kind": "gold", "pos": { "xPct": 54, "yPct": 34 } },
+    { "kind": "gold", "pos": "random" },
+    { "kind": "iron", "pos": "random" },
+    { "kind": "iron", "pos": "random" }
+  ],
+  "mechanisms": [],
+  "actors": [],
+  "narrative": {
+    "slateTitle": "灰盒试验三",
+    "slateSubtitle": "12 圈满编测试：含小金环与重铁圈，左柱充能就绪。",
+    "chinCue": "灰盒试验三：5 种圈 12 环齐聚，试探重铁与小金环手感。"
+  },
+  "note": "灰盒试验关 3：12 圈满编（5 种圈，含小金环与铁圈，仅左柱充能开启）"
+}
