@@ -9,6 +9,7 @@ import { PhysicsDebugDraw } from './debug/PhysicsDebugDraw';
 import { RingDebugSpawner } from './debug/RingDebugSpawner';
 import { TuningPanel } from './debug/TuningPanel';
 import { Funnel } from './game/Funnel';
+import { LevelLoader, LevelSessionHost } from './game/LevelLoader';
 import { PhysicsStepper } from './game/PhysicsStepper';
 import { Pillar } from './game/Pillar';
 import { RingLayer } from './game/RingLayer';
@@ -24,6 +25,7 @@ import { ShellView } from './ui/ShellView';
 const { ccclass } = _decorator;
 
 export interface LevelBootSessionOptions {
+    levelId?: string;
     durationSec?: number;
     seed?: number;
     title?: string;
@@ -33,7 +35,7 @@ export interface LevelBootSessionOptions {
 
 /** 场景唯一入口，挂在 Canvas 上，运行时用代码搭建三相机夹心架构、3D 圈柱舞台与掌机界面。 */
 @ccclass('Boot')
-export class Boot extends Component {
+export class Boot extends Component implements LevelSessionHost {
     readonly levelState = new LevelState({ durationSec: GameConst.defaultLevelDurationSec });
 
     private machineNode: Node | null = null;
@@ -44,14 +46,16 @@ export class Boot extends Component {
     private waterForce: WaterForce | null = null;
     private scoreJudge: ScoreJudge | null = null;
     private funnel: Funnel | null = null;
+    private levelLoader: LevelLoader | null = null;
     private leftJetBtn: JetButton | null = null;
     private rightJetBtn: JetButton | null = null;
     private hud: Hud | null = null;
 
     private currentLevelOptions: LevelBootSessionOptions = {
+        levelId: GameConst.defaultLevelId,
         durationSec: GameConst.defaultLevelDurationSec,
         seed: GameConst.defaultLevelSeed,
-        title: '第 1 关',
+        title: GameConst.defaultLevelId,
         autoStart: true,
     };
 
@@ -149,8 +153,10 @@ export class Boot extends Component {
             TuningPanel.create(machine);
         }
 
-        // 灰盒默认装载初始演示关并立即启动倒计时（T016 LevelLoader 可直接复用 loadLevelSession）
-        this.loadLevelSession(this.currentLevelOptions);
+        // 通过 LevelLoader 读取关卡 JSON（默认 X01，支持 ?level=X02），加载前暂停物理步与输入
+        this.syncRuntimeWithLevelState();
+        this.levelLoader = LevelLoader.attach(this.node, this);
+        this.levelLoader.loadFromQueryOrDefault();
 
         this.fitMachine();
         view.on('canvas-resize', this.fitMachine, this);
@@ -195,12 +201,8 @@ export class Boot extends Component {
         this.waterForce?.reset(seed);
         this.bubbles?.reset(seed);
 
-        if (this.ringLayer) {
-            if (merged.spawnRings) {
-                merged.spawnRings(this.ringLayer);
-            } else if (GameConst.DEBUG) {
-                this.spawnInitialDemoRings(this.ringLayer);
-            }
+        if (this.ringLayer && merged.spawnRings) {
+            merged.spawnRings(this.ringLayer);
         }
 
         const initialFreeRings = this.ringLayer ? this.countFreeRings() : 0;
@@ -284,19 +286,6 @@ export class Boot extends Component {
 
         machine.addChild(tankRoot);
         return tankRoot;
-    }
-
-    private spawnInitialDemoRings(ringLayer: RingLayer): void {
-        const colors = ['red', 'green', 'blue'] as const;
-        const innerW = LayoutConfig.innerScreen.width;
-        const margin = 175;
-        const span = Math.max(200, innerW - margin * 2);
-        for (let i = 0; i < 9; i++) {
-            const col = colors[i % 3];
-            const x = margin + ((i * 97) % span);
-            const y = 65 + Math.floor(i / 3) * 80;
-            ringLayer.spawn(x, y, { kind: 'normal', color: col });
-        }
     }
 
     /** 按可视区域等比缩放整机并居中，同时同步 3D 圈柱相机对齐。 */

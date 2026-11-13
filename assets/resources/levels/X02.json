@@ -1,0 +1,30 @@
+{
+  "id": "X02",
+  "title": "X02 · 9 圈",
+  "durationSec": 75,
+  "type": "normal",
+  "seed": 2002,
+  "pillarEnergy": {
+    "left": false,
+    "right": false
+  },
+  "rings": [
+    { "kind": "normal", "color": "red", "pos": { "xPct": 18, "yPct": 20 } },
+    { "kind": "normal", "color": "red", "pos": "random" },
+    { "kind": "normal", "color": "red", "pos": "random" },
+    { "kind": "normal", "color": "green", "pos": { "xPct": 50, "yPct": 26 } },
+    { "kind": "normal", "color": "green", "pos": "random" },
+    { "kind": "normal", "color": "green", "pos": "random" },
+    { "kind": "normal", "color": "blue", "pos": { "xPct": 82, "yPct": 20 } },
+    { "kind": "normal", "color": "blue", "pos": "random" },
+    { "kind": "normal", "color": "blue", "pos": "random" }
+  ],
+  "mechanisms": [],
+  "actors": [],
+  "narrative": {
+    "slateTitle": "灰盒试验二",
+    "slateSubtitle": "借助全缸环流与双柱叠放，收齐 9 枚锁脉环。",
+    "chinCue": "灰盒试验二：消掉同款腾出柱位，全部 9 圈皆可套妥。"
+  },
+  "note": "灰盒试验关 2：9 圈进阶（红绿蓝各 3，消 3 对余 3 单圈），双柱充能关闭"
+}

@@ -131,6 +131,21 @@ export const GameConst = {
 
     /** 暂停/弹窗按键点击热区外扩像素（GDD 画面铁律：点击范围比图形大） */
     hudBtnHitPadding: 10,
+
+    /** 默认进入的关卡编号 */
+    defaultLevelId: 'X01',
+
+    /** 单关同时出现的圈种上限（GDD §2.1：最多 5 种，配合柱容量 6 保证永不锁死） */
+    maxLevelRingSpecies: 5,
+
+    /** 关卡数据百分比坐标安全范围（0~100，避开贴壁边缘） */
+    levelPosMinXPct: 3,
+    levelPosMaxXPct: 97,
+    levelPosMinYPct: 2,
+    levelPosMaxYPct: 98,
+
+    /** 关卡随机摆位时圈与圈、圈与柱之间的最小间隙（像素） */
+    levelRingSpawnGapPx: 6,
 } as const;
 
 export interface RingPillarGeometry {

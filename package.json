@@ -7,7 +7,8 @@
   "scripts": {
     "check": "node tools/check.mjs",
     "check:cloud": "tsc -p .cursor/tsconfig.cloud.json --noEmit",
-    "test": "vitest run tests"
+    "validate:levels": "node tools/validate-levels.mjs",
+    "test": "node tools/validate-levels.mjs && vitest run tests"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
