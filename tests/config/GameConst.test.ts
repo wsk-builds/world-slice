@@ -16,12 +16,11 @@ describe('GameConst & FeelConfig（按参考视频重设计的 3D 圈柱与比�
         expect(geom.pillarTipWidth).toBeLessThan(geom.pillarRootWidth);
         expect(geom.pillarRootWidth).toBeLessThan(geom.ringInnerDiameter * 0.5);
 
-        // 十字四翼卡托视觉宽度适度收短（约 1.24 倍圈外径），且碰撞宽度严格短于视觉宽度（72%）以防外侧圈挂卡
-        expect(geom.pillarBaseWidth).toBeGreaterThan(geom.ringOuterDiameter * 1.15);
-        expect(geom.pillarBaseWidth).toBeLessThan(geom.ringOuterDiameter * 1.3);
-        expect(geom.pillarColliderBaseWidth).toBeCloseTo(geom.pillarBaseWidth * 0.72, 5);
-        expect(geom.pillarColliderCrossDepth).toBeCloseTo(geom.pillarCrossDepth * 0.72, 5);
-        expect(geom.pillarColliderBaseWidth).toBeGreaterThan(geom.ringInnerDiameter);
+        // 十字四翼卡托视觉宽度进一步收短（0.88 倍圈外径），且碰撞宽度严格短于视觉宽度（68%）以防外侧挂卡
+        expect(geom.pillarBaseWidth).toBeGreaterThan(geom.ringInnerDiameter * 1.2);
+        expect(geom.pillarBaseWidth).toBeLessThan(geom.ringOuterDiameter * 0.95);
+        expect(geom.pillarColliderBaseWidth).toBeCloseTo(geom.pillarBaseWidth * 0.68, 5);
+        expect(geom.pillarColliderCrossDepth).toBeCloseTo(geom.pillarCrossDepth * 0.68, 5);
 
         // 上段有效柱杆高度可容纳 6 个保留微倾的圈，柱子整体更精巧（约占扩容后内屏高的 24%）
         expect(geom.pillarHeight).toBeCloseTo(
@@ -33,8 +32,8 @@ describe('GameConst & FeelConfig（按参考视频重设计的 3D 圈柱与比�
         expect(totalRatio).toBeLessThan(0.28);
     });
 
-    it('柱子位置左右对称（24% / 76%）、悬空尾尖离底 31%，卡托面落在约 42.5% 且不侵入底角圆弧', () => {
-        expect(FeelConfig.pillarPosPct).toBe(24);
+    it('柱子位置左右对称（32.5% / 67.5%）、悬空尾尖离底 31%，远避开圆弧底角', () => {
+        expect(FeelConfig.pillarPosPct).toBe(32.5);
         expect(FeelConfig.pillarBottomPct).toBe(31);
 
         const leftX = TankSpace.pctToPxX(FeelConfig.pillarPosPct);
@@ -46,7 +45,7 @@ describe('GameConst & FeelConfig（按参考视频重设计的 3D 圈柱与比�
         expect(TankSpace.pctToPxY(FeelConfig.pillarBottomPct)).toBeGreaterThan(geom.ringOuterDiameter * 1.5);
     });
 
-    it('海眼位置左右对称（14% / 86%），位于圆弧底角内侧且在悬空柱外侧', () => {
+    it('海眼位置左右对称（14% / 86%），圆弧底角无缝衔接海眼喷流消除角落死区', () => {
         expect(FeelConfig.nozzlePosPct).toBe(14);
         expect(FeelConfig.nozzleTiltDeg).toBe(10);
 
@@ -55,7 +54,9 @@ describe('GameConst & FeelConfig（按参考视频重设计的 3D 圈柱与比�
         const leftPillarX = TankSpace.pctToPxX(FeelConfig.pillarPosPct);
 
         expect(leftNozzleX + rightNozzleX).toBeCloseTo(TankSpace.width, 5);
-        expect(leftNozzleX - GameConst.jetMouthHalfWidth).toBeGreaterThan(GameConst.tankCornerRadius);
+        // 海眼中心在圆弧底角内侧平底上，且喷流外缘直接覆盖进圆弧斜坡区，确保边角零死区
+        expect(leftNozzleX).toBeGreaterThan(GameConst.tankCornerRadius);
+        expect(leftNozzleX - GameConst.jetMouthHalfWidth).toBeLessThan(GameConst.tankCornerRadius);
         expect(leftNozzleX).toBeLessThan(leftPillarX);
     });
 });

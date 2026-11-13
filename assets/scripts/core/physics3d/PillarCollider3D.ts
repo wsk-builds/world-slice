@@ -63,11 +63,6 @@ export class PillarCollider3D {
         this.crossHalfWidth = geom.pillarColliderBaseWidth * 0.5;
         this.crossHalfDepth = geom.pillarColliderCrossDepth * 0.5;
 
-        const wingCenterR = geom.pillarBaseHeight * 0.5;
-        const wingTipR = 2.0;
-        // 补偿锥形胶囊半径收细，使卡托顶面基本保持水平承接（仅微降约 1px），底面大幅上收且翼尖圆细不卡外侧圈
-        const wingTipY = this.crossCenterY + (wingCenterR - wingTipR) * 0.85;
-
         this.segments.length = 0;
 
         // 1. 上段锥形柱杆（柱尖圆球中心位于 tipY - tipRadius，保证视觉柱尖最高点对齐 tipY）
@@ -82,8 +77,9 @@ export class PillarCollider3D {
             radiusB: this.tipRadius,
         });
 
-        // 2. 下段悬空收尖尾椎
-        const tailTipR = 2.0;
+        // 2. 下段悬空收尖尾椎（仅保留竖向圆滑鼓肚轴心，不伸出任何横向胶囊尖刺，彻底杜绝竖立圆环像挂钩一样挂在卡托翅膀上）
+        const tailTipR = 2.5;
+        const hubRadius = Math.min(this.crossHalfWidth * 0.65, this.rootRadius * 1.25);
         this.segments.push({
             ax: x,
             ay: tailBottomY + tailTipR,
@@ -92,53 +88,7 @@ export class PillarCollider3D {
             by: this.crossCenterY,
             bz: 0,
             radiusA: tailTipR,
-            radiusB: this.rootRadius * 0.8,
-        });
-
-        // 3. 十字横翼碰撞胶囊（比视觉十字翼收短一截且翼尖收细，外侧圈质心悬空自然翻落，入柱圈稳坐承接面）
-        const xSpan = Math.max(wingTipR + 2, this.crossHalfWidth - wingTipR);
-        this.segments.push({
-            ax: x,
-            ay: this.crossCenterY,
-            az: 0,
-            bx: x - xSpan,
-            by: wingTipY,
-            bz: 0,
-            radiusA: wingCenterR,
-            radiusB: wingTipR,
-        });
-        this.segments.push({
-            ax: x,
-            ay: this.crossCenterY,
-            az: 0,
-            bx: x + xSpan,
-            by: wingTipY,
-            bz: 0,
-            radiusA: wingCenterR,
-            radiusB: wingTipR,
-        });
-
-        // 4. 十字纵翼碰撞胶囊（前后各一段收短胶囊，比视觉翼尖更短）
-        const zSpan = Math.max(wingTipR + 2, this.crossHalfDepth - wingTipR);
-        this.segments.push({
-            ax: x,
-            ay: this.crossCenterY,
-            az: 0,
-            bx: x,
-            by: wingTipY,
-            bz: -zSpan,
-            radiusA: wingCenterR,
-            radiusB: wingTipR,
-        });
-        this.segments.push({
-            ax: x,
-            ay: this.crossCenterY,
-            az: 0,
-            bx: x,
-            by: wingTipY,
-            bz: zSpan,
-            radiusA: wingCenterR,
-            radiusB: wingTipR,
+            radiusB: hubRadius,
         });
     }
 

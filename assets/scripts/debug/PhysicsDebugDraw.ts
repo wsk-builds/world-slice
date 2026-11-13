@@ -79,7 +79,7 @@ export class PhysicsDebugDraw extends Component {
             gfx.stroke();
         }
 
-        // 2. 三段式锥形十字柱各胶囊段轮廓
+        // 2. 三段式锥形十字柱竖向胶囊骨架与收短后的卡托承接平顶线
         gfx.strokeColor = WIRE_PILLAR;
         for (const p of world.pillars) {
             for (const seg of p.segments) {
@@ -91,6 +91,9 @@ export class PhysicsDebugDraw extends Component {
                 gfx.circle(seg.bx, seg.by, seg.radiusB);
                 gfx.stroke();
             }
+            gfx.moveTo(p.x - p.crossHalfWidth, p.baseTopY);
+            gfx.lineTo(p.x + p.crossHalfWidth, p.baseTopY);
+            gfx.stroke();
         }
 
         // 3. 3D 圆环投影中心线与管半径采样点

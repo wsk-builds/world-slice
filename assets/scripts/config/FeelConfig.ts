@@ -13,7 +13,7 @@ export interface FeelParams {
     bladderMaxBreathSec: number;
     /** 5. 气囊松手回弹吸满时间（秒，GDD §3.4：起始值 0.22） */
     bladderRefillSec: number;
-    /** 6. 左柱距缸左侧百分比（右柱对称在 100 - pillarPosPct，对齐参考视频：起始值 24%） */
+    /** 6. 左柱距缸左侧百分比（右柱对称在 100 - pillarPosPct，起始值 32.5%） */
     pillarPosPct: number;
     /** 7. 柱尾尖离缸底百分比（起始值 31%，使十字卡托承接面落在约 42.5% 缸高，对齐视频） */
     pillarBottomPct: number;
@@ -35,7 +35,7 @@ export const DEFAULT_FEEL_CONFIG: Readonly<FeelParams> = {
     holdLiftPct: 85,
     bladderMaxBreathSec: 0.65,
     bladderRefillSec: 0.22,
-    pillarPosPct: 24,
+    pillarPosPct: 32.5,
     pillarBottomPct: 31,
     nozzlePosPct: 14,
     nozzleTiltDeg: 10,

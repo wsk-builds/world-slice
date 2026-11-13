@@ -42,17 +42,17 @@ export const GameConst = {
     /** 单层微倾叠放高度相对管粗的留余系数（适配变细管径下的 15° 自然三维微倾叠放，6 层稳妥对齐柱尖） */
     pillarSlotPitchScale: 1.24,
 
-    /** 十字四翼卡托视觉横向总宽与中号圈外径之比（收短至 1.24 倍 ≈ 99.2px，比旧版 132px 缩短 25%） */
-    pillarCrossWidthRatio: 1.24,
+    /** 十字四翼卡托视觉横向总宽与中号圈外径之比（收短至 0.88 倍 ≈ 70.4px，比圈外径略收敛、精致不挂圈） */
+    pillarCrossWidthRatio: 0.88,
 
-    /** 十字四翼卡托视觉前后总深与中号圈外径之比（收短至 1.12 倍 ≈ 89.6px） */
-    pillarCrossDepthRatio: 1.12,
+    /** 十字四翼卡托视觉前后总深与中号圈外径之比（收短至 0.84 倍 ≈ 67.2px） */
+    pillarCrossDepthRatio: 0.84,
 
-    /** 十字卡托碰撞翼展占视觉翼展的比例（0.72：碰撞体积比实际显示的卡托还短 28%，彻底避免外侧圈挂卡在卡托上） */
-    pillarCrossColliderRatio: 0.72,
+    /** 十字卡托承接碰撞区占视觉翼展的比例（0.68：碰撞范围比显示的卡托更短，且取消外伸横刺杜绝竖挂卡圈） */
+    pillarCrossColliderRatio: 0.68,
 
     /** 十字四翼卡托竖向厚度（像素） */
-    pillarBaseHeight: 19,
+    pillarBaseHeight: 16,
 
     /** 十字卡托下方悬空收尖尾椎高度（像素） */
     pillarTailHeight: 34,
@@ -60,17 +60,17 @@ export const GameConst = {
     /** 缸壁碰撞厚度（像素，位于内壁外侧） */
     tankWallThickness: 24,
 
-    /** 左右底角向内圆弧半径（像素，小于左海眼 14% = 131.6px 减喷口半宽，防死角且不占海眼位） */
-    tankCornerRadius: 72,
+    /** 左右底角向内圆弧半径（像素，直接衔接到 14%/86% 海眼外缘，彻底消除海眼外侧平底死角） */
+    tankCornerRadius: 122,
 
     /** 单个底角圆弧用多少段折线近似（供 2D 缸壁绘制与校验） */
-    tankCornerSegments: 8,
+    tankCornerSegments: 12,
 
     /** 底角折线外推厚度（像素） */
     tankCornerStripThickness: 14,
 
-    /** 海眼喷口初始半宽（像素，覆盖中号圈主半径 ±36.2px 且不侵入 72px 底角圆弧） */
-    jetMouthHalfWidth: 50,
+    /** 海眼喷口初始半宽（像素，向左/右延伸深入 122px 底角斜坡区，确保落入两角的圈都能直接被喷流冲起） */
+    jetMouthHalfWidth: 68,
 
     /** 喷射键点击热区向四周外扩像素（点击范围比图形大，GDD 画面铁律） */
     jetBtnHitPadding: 24,
@@ -79,7 +79,7 @@ export const GameConst = {
     defaultLevelSeed: 1024,
 
     /** 主喷流下窄上宽锥形半张角（度） */
-    jetHalfAngleDeg: 14,
+    jetHalfAngleDeg: 16,
 
     /** 水体涡流扰动的空间特征尺度（像素） */
     turbulenceSpatialScale: 165,

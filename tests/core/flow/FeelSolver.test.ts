@@ -23,7 +23,7 @@ describe('FeelSolver 体感参数换算（T010）', () => {
             holdLiftPct: 85,
             bladderMaxBreathSec: 0.65,
             bladderRefillSec: 0.22,
-            pillarPosPct: 24,
+            pillarPosPct: 32.5,
             pillarBottomPct: 31,
             nozzlePosPct: 14,
             nozzleTiltDeg: 10,

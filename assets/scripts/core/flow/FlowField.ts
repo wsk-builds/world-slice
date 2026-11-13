@@ -278,13 +278,17 @@ export class CirculationFlowTerm implements FlowTermObject {
             return;
         }
 
-        const nx = (x - this.halfW) / this.halfW;
-        const ny = (y - this.halfH) / this.halfH;
+        const nx = Math.max(-1, Math.min(1, (x - this.halfW) / this.halfW));
+        const ny = Math.max(-1, Math.min(1, (y - this.halfH) / this.halfH));
         const aspect = this.halfH / this.halfW;
 
-        // 顺时针（eff > 0）：上右(+x)、右左看：右侧下(-y)、底部左(-x)、左侧上(+y)
-        out.x = eff * this.maxSpeed * ny;
-        out.y = -eff * this.maxSpeed * nx * aspect;
+        // 贴近左右缸壁时平滑收零横向推墙分量，避免喷水环流把边角圈死死压在底角内壁上
+        const wallTaperX = 1 - 0.85 * nx * nx;
+        const wallTaperY = 1 - 0.85 * ny * ny;
+
+        // 顺时针（eff > 0）：上右(+x)、右侧下(-y)、底部左(-x)、左侧上(+y)
+        out.x = eff * this.maxSpeed * ny * wallTaperX;
+        out.y = -eff * this.maxSpeed * nx * aspect * wallTaperY;
     }
 }
 

@@ -230,4 +230,80 @@ describe('TorusWorld3D 真 3D 圆环翻转、锥形十字柱与立体堆叠', ()
             expect(ring.y).toBeLessThan(pillar.tailBottomY);
         }
     });
+
+    it('竖立圆环从下方或侧面冲向十字卡托时绝不会像挂钩一样竖挂在卡托翅膀上', () => {
+        for (const [pitchX, rollZ] of [
+            [8, 82],
+            [82, 8],
+        ] as const) {
+            const world = new TorusWorld3D();
+            const pillarX = TankSpace.pctToPxX(32.5);
+            const pillarBottomY = TankSpace.pctToPxY(31);
+            const pillar = world.addPillar(new PillarCollider3D(pillarX, pillarBottomY, geom));
+
+            const qVert = quatFromEulerDeg(pitchX, 12, rollZ, { x: 0, y: 0, z: 0, w: 1 });
+            const ring = world.addBody(
+                new TorusBody3D({
+                    x: pillarX - 18,
+                    y: pillar.tailBottomY - 15,
+                    z: 0,
+                    qx: qVert.x,
+                    qy: qVert.y,
+                    qz: qVert.z,
+                    qw: qVert.w,
+                    majorRadius: majorR,
+                    tubeRadius: tubeR,
+                }),
+            );
+
+            // 先向上冲 0.35 秒撞击卡托底部/侧翼，随后停止冲力靠重力自然回落到缸底
+            for (let step = 0; step < 220; step++) {
+                const fy = step < 21 ? 1400 * ring.mass : -520 * ring.mass;
+                ring.applyCentralForce(0, fy, 0);
+                world.step(1 / 60);
+            }
+
+            expect(ring.y).toBeLessThan(60);
+        }
+    });
+
+    it('落入水缸最右下角/左下角的多个圈会自动沿圆弧滑向海眼，按喷射键可直接全部冲起不卡死角', () => {
+        const world = new TorusWorld3D();
+        const outerR = majorR + tubeR;
+
+        // 在最右下角紧贴右壁堆放 3 个圈（复现截图右下角三圈堆积场景）
+        const cornerRings: TorusBody3D[] = [];
+        for (let i = 0; i < 3; i++) {
+            const q = quatFromEulerDeg(-10 + i * 8, i * 35, 14 - i * 9, { x: 0, y: 0, z: 0, w: 1 });
+            cornerRings.push(
+                world.addBody(
+                    new TorusBody3D({
+                        x: TankSpace.width - outerR - 2 - i * 4,
+                        y: 128 + i * 28,
+                        z: -6 + i * 6,
+                        qx: q.x,
+                        qy: q.y,
+                        qz: q.z,
+                        qw: q.w,
+                        majorRadius: majorR,
+                        tubeRadius: tubeR,
+                    }),
+                ),
+            );
+        }
+
+        // 不喷水自然沉降 1.5 秒：所有圈都沿光滑 122px 圆弧向内滑入右海眼喷流覆盖区（x < width - 78）
+        for (let step = 0; step < 90; step++) {
+            for (const r of cornerRings) {
+                r.applyCentralForce(0, -520 * r.mass, 0);
+            }
+            world.step(1 / 60);
+        }
+
+        const rightJetOuterEdge = TankSpace.pctToPxX(86) + 68;
+        for (const r of cornerRings) {
+            // 每个圈左缘（x - majorR）都已进入右海眼喷流口覆盖范围之内，绝无喷不到的死角
+            expect(r.x - majorR).toBeLessThan(rightJetOuterEdge);
+        }
+    });
 });

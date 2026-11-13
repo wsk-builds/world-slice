@@ -201,12 +201,14 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
                 rest,
             );
         }
-        // 左墙 x = 0（y >= cr）
+        // 左墙 x = 0（y >= cr，底部近角段零摩擦防贴墙滞留）
         if (qx < rTube && qy >= cr) {
-            pushContactDedup(out, startIdx, 8, ring, null, 0, qy, qz, 1, 0, 0, rTube - qx, mu, rest);
+            const sideMu = qy < cr * 1.6 ? 0 : mu;
+            pushContactDedup(out, startIdx, 8, ring, null, 0, qy, qz, 1, 0, 0, rTube - qx, sideMu, rest);
         }
-        // 右墙 x = width（y >= cr）
+        // 右墙 x = width（y >= cr，底部近角段零摩擦防贴墙滞留）
         if (qx > tank.width - rTube && qy >= cr) {
+            const sideMu = qy < cr * 1.6 ? 0 : mu;
             pushContactDedup(
                 out,
                 startIdx,
@@ -220,7 +222,7 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
                 0,
                 0,
                 qx + rTube - tank.width,
-                mu,
+                sideMu,
                 rest,
             );
         }
@@ -263,7 +265,7 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
             );
         }
 
-        // 左下圆弧底角（圆心 (cr, cr)，内凹四分之一圆柱面）
+        // 左下圆弧底角（圆心 (cr, cr)，光滑零摩擦内凹圆弧滑道，让边角圈自动滑回海眼）
         if (cr > 0 && qx < cr && qy < cr) {
             const dx = qx - cr;
             const dy = qy - cr;
@@ -285,13 +287,13 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
                     ny,
                     0,
                     depth,
-                    mu * 0.4,
+                    0,
                     rest,
                 );
             }
         }
 
-        // 右下圆弧底角（圆心 (width - cr, cr)）
+        // 右下圆弧底角（圆心 (width - cr, cr)，光滑零摩擦内凹圆弧滑道）
         const rcx = tank.width - cr;
         if (cr > 0 && qx > rcx && qy < cr) {
             const dx = qx - rcx;
@@ -314,7 +316,7 @@ export function detectTorusTankContacts(ring: TorusBody3D, tank: TankBounds3D, o
                     ny,
                     0,
                     depth,
-                    mu * 0.4,
+                    0,
                     rest,
                 );
             }
@@ -344,39 +346,87 @@ export function detectTorusPillarContacts(ring: TorusBody3D, pillar: PillarColli
         detectTorusTaperedSegment(ring, pillar.segments[s], mu, rest, out);
     }
 
-    // 对已真正套入柱杆（柱心穿过圆环内孔）的圈，由卡托承接面 baseTopY 平稳兜底，既允许外侧卡托碰撞收短防卡，又防止偏心大圈漏下尾椎
+    // 精确三维穿孔判定：仅当竖直柱轴真正穿过圆环三维内孔平面时，才启用卡托承接/防倒穿，外侧擦过或竖立贴靠的圈绝不挂卡
     const absNy = Math.abs(ring.basisN.y);
-    if (absNy > 0.5 && ring.y >= pillar.crossBottomY && ring.y - outerR < pillar.baseTopY) {
+    if (absNy > 0.35) {
+        const dxAxis = pillar.x - ring.x;
+        const dzAxis = pillar.z - ring.z;
+        const dyPierce = -(dxAxis * ring.basisN.x + dzAxis * ring.basisN.z) / ring.basisN.y;
+        const yPierce = ring.y + dyPierce;
+        const inPlaneDist = Math.hypot(dxAxis, dyPierce, dzAxis);
         const innerR = Math.max(0, ring.majorRadius - ring.tubeRadius);
-        const radialXZ = Math.hypot(ring.x - pillar.x, ring.z - pillar.z);
-        if (radialXZ < innerR * absNy) {
-            const seatStart = out.length;
+
+        if (inPlaneDist < innerR) {
             const R = ring.majorRadius;
             const rTube = ring.tubeRadius;
-            const seatTopY = pillar.baseTopY;
-            for (let i = 0; i < WALL_RING_SAMPLES; i++) {
-                const c = RING_ANGLES_12.cos[i];
-                const s = RING_ANGLES_12.sin[i];
-                const qx = ring.x + R * (c * ring.basisU.x + s * ring.basisV.x);
-                const qy = ring.y + R * (c * ring.basisU.y + s * ring.basisV.y);
-                const qz = ring.z + R * (c * ring.basisU.z + s * ring.basisV.z);
-                if (qy < seatTopY + rTube && qy > pillar.crossBottomY - rTube) {
-                    pushContactDedup(
-                        out,
-                        seatStart,
-                        4,
-                        ring,
-                        null,
-                        qx,
-                        seatTopY,
-                        qz,
-                        0,
-                        1,
-                        0,
-                        seatTopY + rTube - qy,
-                        mu,
-                        rest,
-                    );
+
+            if (
+                ring.y >= pillar.crossCenterY &&
+                ring.y - outerR < pillar.baseTopY + 2 &&
+                yPierce >= pillar.crossCenterY - 2 &&
+                yPierce <= pillar.tipY + 4
+            ) {
+                // 已从柱尖套入上段锥杆：卡托顶面 baseTopY 平稳向上托住圆环
+                const seatStart = out.length;
+                const seatTopY = pillar.baseTopY;
+                for (let i = 0; i < WALL_RING_SAMPLES; i++) {
+                    const c = RING_ANGLES_12.cos[i];
+                    const s = RING_ANGLES_12.sin[i];
+                    const qx = ring.x + R * (c * ring.basisU.x + s * ring.basisV.x);
+                    const qy = ring.y + R * (c * ring.basisU.y + s * ring.basisV.y);
+                    const qz = ring.z + R * (c * ring.basisU.z + s * ring.basisV.z);
+                    if (qy < seatTopY + rTube && qy > pillar.crossBottomY - rTube) {
+                        pushContactDedup(
+                            out,
+                            seatStart,
+                            4,
+                            ring,
+                            null,
+                            qx,
+                            seatTopY,
+                            qz,
+                            0,
+                            1,
+                            0,
+                            seatTopY + rTube - qy,
+                            mu,
+                            rest,
+                        );
+                    }
+                }
+            } else if (
+                ring.y < pillar.crossCenterY &&
+                ring.y + outerR > pillar.crossBottomY - 2 &&
+                yPierce >= pillar.tailBottomY - 4 &&
+                yPierce <= pillar.crossCenterY + 2
+            ) {
+                // 从下方误穿尾椎上冲：卡托底面 crossBottomY 纯向下挡回（法线 -Y 永不托挂圆环）
+                const blockStart = out.length;
+                const bottomY = pillar.crossBottomY;
+                for (let i = 0; i < WALL_RING_SAMPLES; i++) {
+                    const c = RING_ANGLES_12.cos[i];
+                    const s = RING_ANGLES_12.sin[i];
+                    const qx = ring.x + R * (c * ring.basisU.x + s * ring.basisV.x);
+                    const qy = ring.y + R * (c * ring.basisU.y + s * ring.basisV.y);
+                    const qz = ring.z + R * (c * ring.basisU.z + s * ring.basisV.z);
+                    if (qy > bottomY - rTube && qy < pillar.baseTopY + rTube) {
+                        pushContactDedup(
+                            out,
+                            blockStart,
+                            4,
+                            ring,
+                            null,
+                            qx,
+                            bottomY,
+                            qz,
+                            0,
+                            -1,
+                            0,
+                            qy + rTube - bottomY,
+                            0,
+                            rest,
+                        );
+                    }
                 }
             }
         }
