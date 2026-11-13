@@ -3,8 +3,10 @@ import { calcMachineScale, LayoutConfig } from './config/LayoutConfig';
 import { Palette } from './config/Palette';
 import { applyCollisionMatrix } from './config/PhysicsGroups';
 import { PhysicsDebugDraw } from './debug/PhysicsDebugDraw';
+import { RingDebugSpawner } from './debug/RingDebugSpawner';
 import { PhysicsStepper } from './game/PhysicsStepper';
 import { Pillar } from './game/Pillar';
+import { RingLayer } from './game/Ring';
 import { Tank } from './game/Tank';
 import { ShellView } from './ui/ShellView';
 
@@ -36,6 +38,9 @@ export class Boot extends Component {
         tankRoot.addComponent(PhysicsStepper);
         Tank.create(tankRoot);
         Pillar.createPair(tankRoot);
+        const ringLayer = RingLayer.create(tankRoot);
+        const ringSpawner = tankRoot.addComponent(RingDebugSpawner);
+        ringSpawner.ringLayer = ringLayer;
         tankRoot.addComponent(PhysicsDebugDraw);
 
         // 外壳绘制在最上层，内屏位置挖空

@@ -55,4 +55,19 @@ export const Palette = {
     pillarRodFill: hex('#DCE4EC'),
     pillarBaseFill: hex('#9FB3C8'),
     pillarBorder: hex('#F4F8FB'),
+
+    /** 灰盒七种锁脉环配色 */
+    ring: {
+        red: hex('#EE5253'),
+        green: hex('#2ED573'),
+        blue: hex('#1E90FF'),
+        orange: hex('#FFA502'),
+        gold: hex('#FFD32A'),
+        goldAccent: hex('#FFF3B0'),
+        iron: hex('#57606F'),
+        ironAccent: hex('#A4B0BE'),
+        wood: hex('#B57642'),
+        woodAccent: hex('#E2B488'),
+        highlight: hex('#FFFFFF', 0.42),
+    },
 } as const;
