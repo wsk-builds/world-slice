@@ -6,7 +6,7 @@ import { GameConst } from '../config/GameConst';
 import { LayoutConfig, LayoutRect, rectCenter } from '../config/LayoutConfig';
 import { Palette } from '../config/Palette';
 import { FlowSide } from '../core/flow/FlowField';
-import { Bladder, calcSoftCapPose, SoftCapPose } from '../core/input/Bladder';
+import { Bladder, calcSoftCapPose, poseFromSoftCapDepth, SoftCapPose } from '../core/input/Bladder';
 
 const { ccclass } = _decorator;
 
@@ -116,6 +116,10 @@ export class JetButton extends Component {
         input.on(Input.EventType.KEY_DOWN, this.onKeyDown, this);
         input.on(Input.EventType.KEY_UP, this.onKeyUp, this);
         game.on(Game.EVENT_HIDE, this.releaseAllInputs, this);
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+            window.addEventListener('blur', this.releaseAllInputs);
+        }
+        game.canvas?.addEventListener?.('blur', this.releaseAllInputs);
     }
 
     onDisable(): void {
@@ -125,6 +129,10 @@ export class JetButton extends Component {
         input.off(Input.EventType.KEY_DOWN, this.onKeyDown, this);
         input.off(Input.EventType.KEY_UP, this.onKeyUp, this);
         game.off(Game.EVENT_HIDE, this.releaseAllInputs, this);
+        if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+            window.removeEventListener('blur', this.releaseAllInputs);
+        }
+        game.canvas?.removeEventListener?.('blur', this.releaseAllInputs);
         this.releaseAllInputs();
     }
 
@@ -204,13 +212,7 @@ export class JetButton extends Component {
     }
 
     private currentPose(): SoftCapPose {
-        const d = this.visualDepth;
-        return {
-            depth: d,
-            offsetY: -d * 14,
-            scaleX: 1 - d * 0.05,
-            scaleY: 1 - d * 0.10,
-        };
+        return poseFromSoftCapDepth(this.visualDepth);
     }
 
     private needsRedraw(): boolean {

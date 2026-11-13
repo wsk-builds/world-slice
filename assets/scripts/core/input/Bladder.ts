@@ -159,6 +159,19 @@ const MAX_SQUASH_X = 0.05;
 const MAX_SQUASH_Y = 0.10;
 
 /**
+ * 将归一化下陷深度（0–1）映射为软胶键帽的位移与挤压缩放（纯逻辑）。
+ */
+export function poseFromSoftCapDepth(depth: number): SoftCapPose {
+    const d = depth <= 0 ? 0 : depth >= 1 ? 1 : depth;
+    return {
+        depth: d,
+        offsetY: d > 0 ? -d * MAX_CAP_SINK_PX : 0,
+        scaleX: 1 - d * MAX_SQUASH_X,
+        scaleY: 1 - d * MAX_SQUASH_Y,
+    };
+}
+
+/**
  * 根据按压状态与气囊余量（0–1）计算软胶喷射键的下陷位移与缩放（GDD §2.2、§8，纯逻辑）。
  */
 export function calcSoftCapPose(pressed: boolean, reserve: number): SoftCapPose {
@@ -168,10 +181,5 @@ export function calcSoftCapPose(pressed: boolean, reserve: number): SoftCapPose 
         ? INITIAL_PRESS_DEPTH + (1 - INITIAL_PRESS_DEPTH) * depletion
         : depletion;
 
-    return {
-        depth,
-        offsetY: depth > 0 ? -depth * MAX_CAP_SINK_PX : 0,
-        scaleX: 1 - depth * MAX_SQUASH_X,
-        scaleY: 1 - depth * MAX_SQUASH_Y,
-    };
+    return poseFromSoftCapDepth(depth);
 }

@@ -57,6 +57,11 @@ export class Ring extends Component {
         return this.dims;
     }
 
+    /** 底层 Box2D 刚体是否已完成创建（防止物理步内动态生成节点在次子步访问未就绪刚体） */
+    get isBodyReady(): boolean {
+        return Boolean((this.body?.impl as { impl?: unknown } | null)?.impl);
+    }
+
     /**
      * 在挂入父节点前创建并配好节点与物理组件，确保 RigidBody2D.bullet 等仅在初始化时读取的属性生效。
      */
@@ -153,7 +158,7 @@ export class Ring extends Component {
     /** 获取两个端点圆心在缸坐标系下的实时位置（多子步物理期间直接从刚体换算） */
     getTankEnds(outLeft: Vec2, outRight: Vec2): void {
         const parent = this.node.parent;
-        if (this.body?.impl && parent) {
+        if (this.isBodyReady && parent) {
             this.getWorldEnds(outLeft, outRight);
             const origin = parent.worldPosition;
             const sx = parent.worldScale.x || 1;

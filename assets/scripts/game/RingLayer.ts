@@ -117,7 +117,7 @@ export class RingLayer extends Component {
                 this.rings.splice(i, 1);
                 continue;
             }
-            if (ring.locked || !ring.body) {
+            if (ring.locked || !ring.isBodyReady) {
                 continue;
             }
             const accelPx = SolvedFeelConfig.baseSinkAccel * ring.kindConfig.sinkScale;
