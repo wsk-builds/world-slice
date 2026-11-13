@@ -3,5 +3,14 @@
   "uuid": "c491f82a-7d3e-4b65-a219-8e5c0f3b9a41",
   "creator": {
     "version": "3.8.8"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "vitest run tests"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
   }
 }

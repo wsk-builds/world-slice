@@ -5,6 +5,13 @@
   /* Add your custom configuration here. */
   "compilerOptions": {
     "strict": false,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": [
+      "./temp/declarations/cc.custom-macro",
+      "./temp/declarations/jsb",
+      "./temp/declarations/cc",
+      "./temp/declarations/cc.env",
+      "node"
+    ]
   }
 }
