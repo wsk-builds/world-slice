@@ -17,6 +17,7 @@ import { RingLayer } from './game/RingLayer';
 import { ScoreJudge } from './game/ScoreJudge';
 import { Tank } from './game/Tank';
 import { TidePullSkill } from './game/TidePullSkill';
+import { CalmSeaSkill } from './game/CalmSeaSkill';
 import { WaterForce } from './game/WaterForce';
 import { Bubbles } from './render/Bubbles';
 import { RenderLayers, Stage3DRig } from './render/Stage3DRig';
@@ -51,6 +52,7 @@ export class Boot extends Component implements LevelSessionHost {
     private pillarEnergy: PillarEnergyController | null = null;
     private funnel: Funnel | null = null;
     private tidePullSkill: TidePullSkill | null = null;
+    private calmSeaSkill: CalmSeaSkill | null = null;
     private levelLoader: LevelLoader | null = null;
     private leftJetBtn: JetButton | null = null;
     private rightJetBtn: JetButton | null = null;
@@ -106,11 +108,20 @@ export class Boot extends Component implements LevelSessionHost {
             scoreJudge,
             leftPillar,
         });
+        const calmSeaSkill = CalmSeaSkill.attach(tankRoot, {
+            flowField,
+            energyController: pillarEnergy,
+            ringLayer,
+            leftPillar,
+            rightPillar,
+            scoreJudge,
+        });
         const ringSpawner = tankRoot.addComponent(RingDebugSpawner);
         ringSpawner.ringLayer = ringLayer;
         ringSpawner.scoreJudge = scoreJudge;
         ringSpawner.onClearAll = () => {
             this.tidePullSkill?.reset();
+            this.calmSeaSkill?.reset();
             this.funnel?.reset();
             this.pillarEnergy?.reset(this.currentLevelOptions.pillarEnergy);
             this.levelState.reset({
@@ -132,6 +143,7 @@ export class Boot extends Component implements LevelSessionHost {
         this.pillarEnergy = pillarEnergy;
         this.funnel = funnel;
         this.tidePullSkill = tidePullSkill;
+        this.calmSeaSkill = calmSeaSkill;
 
         stepper.onAfterStep(this.onAfterPhysicsStep);
         this.unsubLevelStatus = this.levelState.onStatusChange(() => {
@@ -215,6 +227,7 @@ export class Boot extends Component implements LevelSessionHost {
         }
         this.scoreJudge?.reset();
         this.tidePullSkill?.reset();
+        this.calmSeaSkill?.reset();
         this.pillarEnergy?.reset(merged.pillarEnergy);
         this.funnel?.reset();
         this.ringLayer?.clearAll();

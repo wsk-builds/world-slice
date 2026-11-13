@@ -82,6 +82,10 @@ export const Palette = {
     tidePullVortexOuter: hex('#5CE6D0', 0.78),
     tidePullVortexInner: hex('#FFF7CC', 0.92),
 
+    /** T019 右柱「定海」缸底暖流线与波纹配色 */
+    calmSeaWarmOuter: hex('#F7C97E', 0.56),
+    calmSeaWarmInner: hex('#FFF1C4', 0.78),
+
     /** 灰盒七种锁脉环配色 */
     ring: {
         red: hex('#EE5253'),

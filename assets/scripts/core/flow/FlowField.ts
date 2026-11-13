@@ -393,6 +393,8 @@ export class FlowField {
 
     private config: FlowFieldConfig;
     private readonly extraTerms: FlowTerm[] = [];
+    private suppTurbScale = 1;
+    private suppCircScale = 1;
 
     constructor(overrides: Partial<FlowFieldConfig> = {}, feel: Readonly<FeelParams> = FeelConfig) {
         this.config = buildFlowFieldConfig(overrides, feel);
@@ -404,8 +406,8 @@ export class FlowField {
     /** 按最新配置（如调参面板或 FeelSolver 修改后）刷新各项参数 */
     applyConfig(overrides: Partial<FlowFieldConfig> = {}, feel: Readonly<FeelParams> = FeelConfig): void {
         const prevSeed = this.config.seed;
-        const prevTurbScale = overrides.turbulenceScale ?? this.turbulence.scale;
-        const prevCircScale = overrides.circulationScale ?? this.circulation.scale;
+        const prevTurbScale = overrides.turbulenceScale ?? this.config.turbulenceScale;
+        const prevCircScale = overrides.circulationScale ?? this.config.circulationScale;
         this.config = buildFlowFieldConfig(
             {
                 seed: prevSeed,
@@ -418,9 +420,35 @@ export class FlowField {
         this.jet.applyConfig(this.config);
         this.circulation.applyConfig(this.config);
         this.turbulence.applyConfig(this.config);
+        this.syncSuppressionScales();
         if (overrides.seed !== undefined && overrides.seed !== prevSeed) {
             this.turbulence.reset(overrides.seed);
         }
+    }
+
+    /** 临时压低扰动与全缸环流倍率（[0, 1]，供 T019「定海」等平息乱流；不影响主喷流与额外技能项） */
+    setFlowSuppression(turbulenceScale: number, circulationScale: number): void {
+        this.suppTurbScale = clamp01(turbulenceScale);
+        this.suppCircScale = clamp01(circulationScale);
+        this.syncSuppressionScales();
+    }
+
+    /** 恢复扰动与全缸环流正常倍率（1） */
+    clearFlowSuppression(): void {
+        this.setFlowSuppression(1, 1);
+    }
+
+    getTurbulenceSuppression(): number {
+        return this.suppTurbScale;
+    }
+
+    getCirculationSuppression(): number {
+        return this.suppCircScale;
+    }
+
+    private syncSuppressionScales(): void {
+        this.turbulence.scale = this.config.turbulenceScale * this.suppTurbScale;
+        this.circulation.scale = this.config.circulationScale * this.suppCircScale;
     }
 
     /** 设置单侧海眼外部输入强度（0–1） */
@@ -478,14 +506,17 @@ export class FlowField {
         this.extraTerms.length = 0;
     }
 
-    /** 重置动态水流状态（喷流、环流、扰动时钟），可选更换新种子 */
+    /** 重置动态水流状态（喷流、环流、扰动时钟与临时压制倍率），可选更换新种子 */
     reset(seed?: number): void {
         if (seed !== undefined) {
             this.config.seed = seed;
         }
+        this.suppTurbScale = 1;
+        this.suppCircScale = 1;
         this.jet.reset();
         this.circulation.reset();
         this.turbulence.reset(seed);
+        this.syncSuppressionScales();
     }
 
     /** 推进物理时间 dt（秒）：更新主喷流松手余韵、全缸环流衰减、扰动演化及额外项 */

@@ -208,6 +208,33 @@ export const GameConst = {
     tidePullVortexMaxRadiusPx: 118,
     tidePullVortexMinRadiusPx: 14,
     tidePullVortexSpinRadPerSec: 4.2,
+
+    /** T019 右柱技能「定海」：暖流托浮、平息乱流与水平归中参数 */
+    calmSeaTargetAboveTipPx: 36,
+    calmSeaTopMarginPx: 26,
+    calmSeaWarmFlowSpeed: 135,
+    calmSeaWarmFlowTaperSpanPx: 65,
+    calmSeaTurbulenceScale: 0.06,
+    calmSeaCirculationScale: 0.08,
+    calmSeaRiseMaxSpeedPx: 145,
+    calmSeaRiseMinSpeedPx: 26,
+    calmSeaRiseSlope: 1.5,
+    calmSeaRiseGain: 8.5,
+    calmSeaMaxRiseAccelPx: 1400,
+    calmSeaOvershootDampRate: 7.0,
+    calmSeaSlowSinkSpeedPx: 10,
+    calmSeaPillarSettleSinkSpeedPx: 30,
+    calmSeaHighDescentSpeedPx: 32,
+    calmSeaBandTrackRate: 14.0,
+    calmSeaMaxBrakeDownRatio: 0.45,
+    calmSeaReLiftOffsetPx: 32,
+    calmSeaAlignRate: 6.5,
+    calmSeaSpinDampRate: 3.2,
+    calmSeaZCenterStiffness: 18.0,
+    calmSeaZCenterDamping: 8.5,
+    calmSeaPillarDetourAccelPx: 240,
+    calmSeaWaveCount: 5,
+    calmSeaStreamCount: 7,
 } as const;
 
 export interface RingPillarGeometry {
