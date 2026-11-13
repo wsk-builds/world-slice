@@ -68,6 +68,10 @@ export class Tank extends Component {
         const gfx = this.node.addComponent(Graphics);
         const { width, height, leftCornerArc, rightCornerArc } = geom;
 
+        // 内屏深水底色（与水缸内壁共用同一 Graphics，省去 TankRoot 独立 Graphics 显存）
+        gfx.fillColor = Palette.innerWaterBg;
+        gfx.fillRect(0, 0, width, height);
+
         // 填充左下角垫块（内壁弧线与直角外角 (0, 0) 之间）
         gfx.fillColor = Palette.tankCornerFill;
         gfx.moveTo(0, 0);

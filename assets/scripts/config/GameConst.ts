@@ -17,8 +17,8 @@ export const GameConst = {
     /** 柱杆宽度（像素，远小于圈内径） */
     pillarWidth: 18,
 
-    /** 柱底托比中号圈内径多出的总宽度（像素） */
-    pillarBaseExtraWidth: 16,
+    /** 柱底托比中号圈内径多出的总宽度（像素，确保圈两端碰撞圆心稳落在底托顶面内） */
+    pillarBaseExtraWidth: 28,
 
     /** 柱底托高度（像素） */
     pillarBaseHeight: 16,

@@ -142,14 +142,26 @@ export class Ring extends Component {
         this.centerBar.apply();
     }
 
-    /** 获取两个端点圆心在物理世界坐标系下的位置（给物理施力与判定使用） */
+    /** 获取两个端点圆心在物理世界坐标系下的位置（乘以世界缩放以对齐 Box2D 夹具实际圆心） */
     getWorldEnds(outLeft: Vec2, outRight: Vec2): void {
-        this.body.getWorldPoint(tempLocal.set(-this.dims.endOffset, 0), outLeft);
-        this.body.getWorldPoint(tempLocal.set(this.dims.endOffset, 0), outRight);
+        const sx = Math.abs(this.node.worldScale.x) || 1;
+        const scaledOffset = this.dims.endOffset * sx;
+        this.body.getWorldPoint(tempLocal.set(-scaledOffset, 0), outLeft);
+        this.body.getWorldPoint(tempLocal.set(scaledOffset, 0), outRight);
     }
 
-    /** 获取两个端点圆心在缸坐标系下的近似位置（基于当前节点位姿） */
+    /** 获取两个端点圆心在缸坐标系下的实时位置（多子步物理期间直接从刚体换算） */
     getTankEnds(outLeft: Vec2, outRight: Vec2): void {
+        const parent = this.node.parent;
+        if (this.body?.impl && parent) {
+            this.getWorldEnds(outLeft, outRight);
+            const origin = parent.worldPosition;
+            const sx = parent.worldScale.x || 1;
+            const sy = parent.worldScale.y || 1;
+            outLeft.set((outLeft.x - origin.x) / sx, (outLeft.y - origin.y) / sy);
+            outRight.set((outRight.x - origin.x) / sx, (outRight.y - origin.y) / sy);
+            return;
+        }
         const rad = toRadian(this.node.angle);
         const dx = Math.cos(rad) * this.dims.endOffset;
         const dy = Math.sin(rad) * this.dims.endOffset;

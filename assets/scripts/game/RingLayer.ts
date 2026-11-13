@@ -2,6 +2,7 @@ import {
     _decorator, Color, Component, Graphics, Layers, Node, PHYSICS_2D_PTM_RATIO, toRadian, UITransform, Vec2,
 } from 'cc';
 import { FeelConfig } from '../config/FeelConfig';
+import { GameConst } from '../config/GameConst';
 import { Palette } from '../config/Palette';
 import { TankSpace } from '../config/TankSpace';
 import { RingSpec } from '../core/rings/RingKinds';
@@ -53,13 +54,23 @@ export class RingLayer extends Component {
         this.stepper?.offBeforeStep(this.onBeforeStep);
     }
 
-    /** 在缸坐标 (x, y) 生成一个圈，坐标会被安全限制在缸壁内侧 */
+    /** 在缸坐标 (x, y) 生成一个圈，坐标会被安全限制在缸壁与圆弧底角内侧 */
     spawn(tankX: number, tankY: number, spec: RingSpec, angleDeg = 0): Ring {
         const dims = calcRingDimensions(spec);
-        const marginX = dims.outerDiameter / 2 + 2;
-        const marginY = dims.thickness / 2 + 2;
+        const halfW = dims.outerDiameter / 2;
+        const halfH = dims.thickness / 2;
+        const marginX = halfW + 2;
+        const marginY = halfH + 2;
         const clampedX = Math.min(Math.max(tankX, marginX), TankSpace.width - marginX);
-        const clampedY = Math.min(Math.max(tankY, marginY), TankSpace.height - marginY);
+        let clampedY = Math.min(Math.max(tankY, marginY), TankSpace.height - marginY);
+
+        const r = GameConst.tankCornerRadius;
+        const safeR = Math.max(0, r - 2);
+        const cornerDx = Math.max(r - (clampedX - halfW), clampedX + halfW - (TankSpace.width - r));
+        if (cornerDx > 0 && cornerDx < r) {
+            const minBottomY = r - Math.sqrt(Math.max(0, safeR * safeR - cornerDx * cornerDx));
+            clampedY = Math.max(clampedY, minBottomY + marginY);
+        }
 
         const ring = Ring.createNode(spec, clampedX, clampedY, angleDeg);
         this.node.addChild(ring.node);

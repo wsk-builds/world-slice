@@ -11,9 +11,9 @@ describe('GameConst & FeelConfig', () => {
         expect(geom.ringOuterDiameter).toBeCloseTo(TankSpace.width / 7.5, 5);
         // 柱杆高度等于 6 个圈叠起来的高度
         expect(geom.pillarHeight).toBeCloseTo(GameConst.pillarCapacity * geom.ringThickness, 5);
-        // 柱杆比圈内径窄，底托比圈内径宽且比圈外径窄
+        // 柱杆比圈内径窄，底托比圈两端圆心间距（outerDiameter - thickness）宽且比圈外径窄
         expect(geom.pillarWidth).toBeLessThan(geom.ringInnerDiameter);
-        expect(geom.pillarBaseWidth).toBeGreaterThan(geom.ringInnerDiameter);
+        expect(geom.pillarBaseWidth).toBeGreaterThan(geom.ringOuterDiameter - geom.ringThickness);
         expect(geom.pillarBaseWidth).toBeLessThan(geom.ringOuterDiameter);
     });
 

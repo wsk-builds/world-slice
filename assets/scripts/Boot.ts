@@ -1,4 +1,4 @@
-import { _decorator, Canvas, Component, Graphics, Layers, Node, PhysicsSystem2D, screen, UITransform, view } from 'cc';
+import { _decorator, Canvas, Component, Layers, Node, PhysicsSystem2D, screen, UITransform, view } from 'cc';
 import { calcMachineScale, LayoutConfig } from './config/LayoutConfig';
 import { Palette } from './config/Palette';
 import { applyCollisionMatrix } from './config/PhysicsGroups';
@@ -77,10 +77,6 @@ export class Boot extends Component {
             inner.y - LayoutConfig.designHeight / 2,
             0,
         );
-
-        const gfx = tankRoot.addComponent(Graphics);
-        gfx.fillColor = Palette.innerWaterBg;
-        gfx.fillRect(0, 0, inner.width, inner.height);
 
         machine.addChild(tankRoot);
         return tankRoot;
