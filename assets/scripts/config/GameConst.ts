@@ -55,6 +55,21 @@ export const GameConst = {
 
     /** 气泡池最大同时存在数量上限 */
     bubblePoolMaxCount: 56,
+
+    /** 圈在柱子上连续稳定多久后锁定（秒，GDD §2.1） */
+    ringLockDurationSec: 0.3,
+
+    /** 锁定判定的线速度上限（像素/秒） */
+    ringLockMaxLinearSpeedPx: 45,
+
+    /** 锁定判定的角速度上限（弧度/秒） */
+    ringLockMaxAngularSpeedRad: 1.5,
+
+    /** 锁定判定允许的最大倾角（度，水平和倒扣 180° 均为 0°） */
+    ringLockMaxTiltDeg: 35,
+
+    /** 圈心相对目标槽位高度的容差（像素），防止空中悬停瞬间瞬移到底部槽位 */
+    ringLockSlotMarginPx: 18,
 } as const;
 
 export interface RingPillarGeometry {

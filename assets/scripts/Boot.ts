@@ -12,6 +12,7 @@ import { TuningPanel } from './debug/TuningPanel';
 import { PhysicsStepper } from './game/PhysicsStepper';
 import { Pillar } from './game/Pillar';
 import { RingLayer } from './game/RingLayer';
+import { ScoreJudge } from './game/ScoreJudge';
 import { Tank } from './game/Tank';
 import { WaterForce } from './game/WaterForce';
 import { Bubbles } from './render/Bubbles';
@@ -56,16 +57,18 @@ export class Boot extends Component {
         const [leftPillar, rightPillar] = Pillar.createPair(tankRoot);
         const ringLayer = RingLayer.create(tankRoot);
         const waterForce = WaterForce.attach(tankRoot, flowField, leftBladder, rightBladder, ringLayer);
+        const scoreJudge = ScoreJudge.attach(tankRoot, leftPillar, rightPillar, ringLayer);
         const ringSpawner = tankRoot.addComponent(RingDebugSpawner);
         ringSpawner.ringLayer = ringLayer;
         tankRoot.addComponent(PhysicsDebugDraw);
 
-        // 体感参数修改后（T010 / T011）实时同步水流、气囊、圈物理属性、双柱与海眼位置
+        // 体感参数修改后（T010 / T011）实时同步水流、气囊、圈物理属性、双柱、已锁圈与海眼位置
         this.unsubFeel = onFeelApplied(() => {
             waterForce.applyConfig();
             ringLayer.applyConfigToAll();
             leftPillar.applyLayout(false);
             rightPillar.applyLayout(true);
+            scoreJudge.syncLockedRings();
             tank.redraw();
         });
 
