@@ -130,7 +130,7 @@ export class Funnel extends Component {
 
         for (let i = 0; i < rings.length; i++) {
             const ring = rings[i];
-            if (!ring.isValid || ring.locked || !ring.isBodyReady || ring.body3D.type !== 'dynamic') {
+            if (!ring.isValid || ring.locked || ring.clearing || !ring.isBodyReady || ring.body3D.type !== 'dynamic') {
                 continue;
             }
 

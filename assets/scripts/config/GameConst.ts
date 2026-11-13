@@ -107,6 +107,21 @@ export const GameConst = {
 
     /** 圈心相对目标槽位高度的容差（像素） */
     ringLockSlotMarginPx: 24,
+
+    /** 同款消除时被消双圈闪烁持续时间（秒） */
+    matchFlashDurationSec: 0.22,
+
+    /** 同款消除后上方已锁圈启动平滑下落的延迟时间（秒，待双圈闪亮缩隐后再落） */
+    matchDropDelaySec: 0.1,
+
+    /** 同款消除后上方已锁圈沿 Y 轴平滑下落速度（像素/秒） */
+    matchDropSpeedPxPerSec: 260,
+
+    /** 同款消除后上方已锁圈平滑下落最短耗时（秒） */
+    matchDropMinDurationSec: 0.12,
+
+    /** 同款消除后上方已锁圈平滑下落最长耗时（秒） */
+    matchDropMaxDurationSec: 0.26,
 } as const;
 
 export interface RingPillarGeometry {

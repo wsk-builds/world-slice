@@ -14,6 +14,7 @@ interface RingMaterialSpec {
 
 const torusMeshCache = new Map<string, Mesh>();
 const ringMaterialCache = new Map<string, Material>();
+let ringFlashMat: Material | null = null;
 let pillarShaftMat: Material | null = null;
 let pillarCrossMat: Material | null = null;
 let loadedMatcapEffect: EffectAsset | null = null;
@@ -38,7 +39,7 @@ export function ensureObliqueShearSynced(shearY: number, zRef = currentObliqueZR
             // builtin-unlit 兜底阶段无此属性，升级后自动写入
         }
     }
-    for (const mat of [pillarShaftMat, pillarCrossMat]) {
+    for (const mat of [pillarShaftMat, pillarCrossMat, ringFlashMat]) {
         if (mat) {
             try {
                 mat.setProperty('obliqueParams', v);
@@ -139,6 +140,14 @@ function upgradeAllCachedMaterials(eff: EffectAsset): void {
         freshCross.setProperty('matcapParams', new Vec4(0.4, 22.0, 0.24, 0.32));
         freshCross.setProperty('obliqueParams', obliqueVec);
         pillarCrossMat = freshCross;
+    }
+    if (ringFlashMat) {
+        const freshFlash = new Material();
+        freshFlash.initialize({ effectAsset: eff });
+        freshFlash.setProperty('mainColor', Palette.ring.goldAccent);
+        freshFlash.setProperty('matcapParams', new Vec4(0.9, 16.0, 0.45, 0.92));
+        freshFlash.setProperty('obliqueParams', obliqueVec);
+        ringFlashMat = freshFlash;
     }
     for (let i = boundRenderers.length - 1; i >= 0; i--) {
         try {
@@ -254,6 +263,15 @@ export function getOrCreateRingMaterial(spec: RingSpec): Material {
     initShadedMaterial(mat, cfg.albedo, cfg.specStrength, cfg.shininess, cfg.rimStrength, cfg.ambientFloor);
     ringMaterialCache.set(key, mat);
     return mat;
+}
+
+/** 获取消除闪烁时共用的高亮材质 */
+export function getOrCreateRingFlashMaterial(): Material {
+    if (!ringFlashMat) {
+        ringFlashMat = new Material();
+        initShadedMaterial(ringFlashMat, Palette.ring.goldAccent, 0.9, 16.0, 0.45, 0.92);
+    }
+    return ringFlashMat;
 }
 
 export function getOrCreatePillarMaterials(): { shaftMat: Material; crossMat: Material } {

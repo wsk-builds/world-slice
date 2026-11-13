@@ -5,7 +5,12 @@ import { SolvedFeelConfig } from '../core/flow/FeelSolver';
 import { quatFromEulerDeg, QuatLike } from '../core/physics3d/Math3D';
 import { TorusBody3D } from '../core/physics3d/TorusBody3D';
 import { getRingKindConfig, RingKindConfig, RingSpec } from '../core/rings/RingKinds';
-import { bindRendererMaterial, getOrCreateRingMaterial, getOrCreateTorusMesh } from '../render/MeshFactory3D';
+import {
+    bindRendererMaterial,
+    getOrCreateRingFlashMaterial,
+    getOrCreateRingMaterial,
+    getOrCreateTorusMesh,
+} from '../render/MeshFactory3D';
 import { RenderLayers, Stage3DRig } from '../render/Stage3DRig';
 
 const { ccclass } = _decorator;
@@ -61,8 +66,12 @@ export class Ring extends Component {
     /** 是否已锁定在柱上（T012 使用）；锁定后切换为静态并保留自然微倾 */
     locked = false;
 
+    /** 是否正在播放消除闪烁动画（T014 使用）；期间不再参与配对、碰撞或受力 */
+    clearing = false;
+
     private dims: RingDimensions = calcRingDimensions({ kind: 'normal', color: 'red' });
     private meshRenderer: MeshRenderer | null = null;
+    private showingFlashMat = false;
 
     get dimensions(): RingDimensions {
         return this.dims;
@@ -137,7 +146,7 @@ export class Ring extends Component {
             const mr = vNode.addComponent(MeshRenderer);
             mr.mesh = getOrCreateTorusMesh(this.dims.majorRadius, this.dims.tubeRadius);
             bindRendererMaterial(
-                () => getOrCreateRingMaterial(this.spec),
+                () => (this.clearing ? getOrCreateRingFlashMaterial() : getOrCreateRingMaterial(this.spec)),
                 (m) => {
                     if (mr.isValid) mr.material = m;
                 },
@@ -161,9 +170,40 @@ export class Ring extends Component {
 
         if (this.meshRenderer) {
             this.meshRenderer.mesh = getOrCreateTorusMesh(this.dims.majorRadius, this.dims.tubeRadius);
-            this.meshRenderer.material = getOrCreateRingMaterial(this.spec);
+            if (!this.clearing) {
+                this.meshRenderer.material = getOrCreateRingMaterial(this.spec);
+                this.showingFlashMat = false;
+            }
         }
         this.syncVisualFromBody();
+    }
+
+    /** 驱动消除闪烁效果（progress01: 0..1），前半程明暗闪烁脉冲，后半程高亮缩隐 */
+    setClearingFlash(progress01: number): void {
+        this.clearing = true;
+        if (!this.view3DNode || !this.view3DNode.isValid) {
+            return;
+        }
+        const t = Math.min(1, Math.max(0, progress01));
+        let useFlashMat = true;
+        let scale = 1;
+
+        if (t < 0.65) {
+            useFlashMat = Math.floor(t * 9) % 2 === 0;
+            scale = 1 + 0.14 * Math.abs(Math.sin(t * Math.PI * 3));
+        } else {
+            const shrinkT = (t - 0.65) / 0.35;
+            useFlashMat = true;
+            scale = Math.max(0.08, 1.12 * (1 - shrinkT));
+        }
+
+        this.view3DNode.setScale(scale, scale, scale);
+        if (this.meshRenderer && this.meshRenderer.isValid && useFlashMat !== this.showingFlashMat) {
+            this.meshRenderer.material = useFlashMat
+                ? getOrCreateRingFlashMaterial()
+                : getOrCreateRingMaterial(this.spec);
+            this.showingFlashMat = useFlashMat;
+        }
     }
 
     /** 将 3D 物理刚体的位置与四元数同步到 2D 锚点节点与 3D 渲染节点 */
