@@ -163,4 +163,15 @@ export const Palette = {
         validText: hex('#5CE6D0'),
         errorText: hex('#FF7B7B'),
     },
+
+    /** T023 挂机自测角标与报错提示配色 */
+    soakBot: {
+        badgeBg: hex('#111A24', 0.88),
+        badgeBorder: hex('#5CE6D0', 0.88),
+        badgeText: hex('#76E5DC'),
+        errorBg: hex('#2B0D14', 0.94),
+        errorBorder: hex('#FF4D4F'),
+        errorTitle: hex('#FF6B6B'),
+        errorText: hex('#FFF1F0'),
+    },
 } as const;

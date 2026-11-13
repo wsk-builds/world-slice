@@ -143,6 +143,17 @@ export class ScoreJudge extends Component {
         return this.stacks.left.count + this.stacks.right.count;
     }
 
+    /** 查询指定已锁圈当前是否处于消除后平滑下落动画中（供 T023 SoakBot 区分合法下落与非法漂移） */
+    isRingDropping(ring: Ring): boolean {
+        return this.droppingRings.has(ring);
+    }
+
+    /** 查询指定处于平滑下落动画中圈的目标缸坐标 Y（未在下落返回 undefined） */
+    getRingDropTargetY(ring: Ring): number | undefined {
+        const state = this.droppingRings.get(ring);
+        return state ? state.pillar.baseTopY + state.targetDyFromBase : undefined;
+    }
+
     onRingLocked(cb: RingLockedListener): () => void {
         if (!this.lockListeners.includes(cb)) {
             this.lockListeners.push(cb);

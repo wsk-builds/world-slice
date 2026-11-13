@@ -9,6 +9,7 @@ import { PhysicsDebugDraw } from './debug/PhysicsDebugDraw';
 import { HotZoneDebugDraw } from './debug/HotZoneDebugDraw';
 import { LevelEditor, LevelEditorExitInfo } from './debug/LevelEditor';
 import { RingDebugSpawner } from './debug/RingDebugSpawner';
+import { SoakBot } from './debug/SoakBot';
 import { TuningPanel } from './debug/TuningPanel';
 import { Funnel } from './game/Funnel';
 import { LevelLoader, LevelSessionHost } from './game/LevelLoader';
@@ -70,6 +71,7 @@ export class Boot extends Component implements LevelSessionHost {
     private ringSpawner: RingDebugSpawner | null = null;
     private tuningPanel: TuningPanel | null = null;
     private levelEditor: LevelEditor | null = null;
+    private soakBot: SoakBot | null = null;
     private editorActive = false;
     private lastCountdownTickSec = -1;
 
@@ -280,6 +282,19 @@ export class Boot extends Component implements LevelSessionHost {
                 () => levelEditor.toggle(),
                 () => levelEditor.isOpen,
             );
+            this.soakBot = SoakBot.createIfEnabled(machine, {
+                stepper,
+                ringLayer,
+                scoreJudge,
+                leftBladder,
+                rightBladder,
+                leftPillar,
+                rightPillar,
+                levelState: this.levelState,
+                sfx,
+                getCurrentLevelId: () => this.currentLevelOptions.levelId ?? GameConst.defaultLevelId,
+                onRestartLevel: () => this.restartCurrentLevel(),
+            });
         }
 
         this.syncRuntimeWithLevelState();
@@ -369,6 +384,7 @@ export class Boot extends Component implements LevelSessionHost {
             this.levelState.start();
         }
         this.syncRuntimeWithLevelState();
+        this.soakBot?.onRoundLoaded(merged.levelId ?? GameConst.defaultLevelId);
     }
 
     /** 重开当前关卡 */
@@ -392,7 +408,7 @@ export class Boot extends Component implements LevelSessionHost {
     }
 
     private syncRuntimeWithLevelState(): void {
-        const running = this.levelState.shouldRunPhysics && !this.editorActive;
+        const running = this.levelState.shouldRunPhysics && !this.editorActive && !this.soakBot?.hasFailure;
         if (this.stepper) {
             this.stepper.running = running;
         }
