@@ -444,7 +444,11 @@ export class TuningPanel extends Component {
     }
 
     private togglePanel(): void {
-        this.setPanelOpen(!this.bodyNode.active);
+        const willOpen = !this.bodyNode.active;
+        if (willOpen && this.isEditorActiveFn?.()) {
+            this.onEditorToggleCb?.();
+        }
+        this.setPanelOpen(willOpen);
     }
 
     setPanelOpen(open: boolean): void {

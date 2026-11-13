@@ -1,9 +1,11 @@
 import { _decorator, Component, Node, screen, UITransform, view } from 'cc';
+import { FeelConfig } from './config/FeelConfig';
 import { GameConst } from './config/GameConst';
 import { calcMachineScale, LayoutConfig } from './config/LayoutConfig';
 import { applyFeel, onFeelApplied } from './core/flow/FeelSolver';
 import { FlowField } from './core/flow/FlowField';
 import { Bladder } from './core/input/Bladder';
+import { resolveLevelRingLayout } from './core/level/LevelRingLayout';
 import { LevelState } from './core/level/LevelState';
 import { PhysicsDebugDraw } from './debug/PhysicsDebugDraw';
 import { HotZoneDebugDraw } from './debug/HotZoneDebugDraw';
@@ -162,6 +164,7 @@ export class Boot extends Component implements LevelSessionHost {
                 this.levelState.start();
             }
             this.syncRuntimeWithLevelState();
+            this.soakBot?.onRoundLoaded(this.currentLevelOptions.levelId ?? GameConst.defaultLevelId);
         };
         tankRoot.addComponent(PhysicsDebugDraw);
         tankRoot.addComponent(HotZoneDebugDraw);
@@ -446,16 +449,37 @@ export class Boot extends Component implements LevelSessionHost {
 
         if (info.edited) {
             this.currentLevelOptions.durationSec = info.durationSec;
+            if (info.editedRings) {
+                const ringsSnapshot = info.editedRings;
+                const seed = this.currentLevelOptions.seed ?? GameConst.defaultLevelSeed;
+                this.currentLevelOptions.spawnRings = (layer: RingLayer) => {
+                    const spawns = resolveLevelRingLayout(ringsSnapshot, {
+                        seed,
+                        pillarPosPct: FeelConfig.pillarPosPct,
+                        pillarBottomPct: FeelConfig.pillarBottomPct,
+                        startPillarDropChance: 0,
+                    });
+                    for (let i = 0; i < spawns.length; i++) {
+                        const item = spawns[i];
+                        layer.spawn(item.x, item.y, item.spec, item.rollZDeg, {
+                            z: item.z,
+                            pitchXDeg: item.pitchXDeg,
+                            yawYDeg: item.yawYDeg,
+                            rollZDeg: item.rollZDeg,
+                        });
+                    }
+                };
+            }
             this.tidePullSkill?.reset();
             this.calmSeaSkill?.reset();
             this.funnel?.reset();
             this.pillarEnergy?.reset(this.currentLevelOptions.pillarEnergy);
             this.lastCountdownTickSec = -1;
-            const totalRings = this.ringLayer ? this.ringLayer.getRings().length : info.freeRingCount;
             this.levelState.reset({ durationSec: info.durationSec, initialFreeRings: info.freeRingCount });
-            if (totalRings > 0) {
+            if (this.currentLevelOptions.autoStart !== false) {
                 this.levelState.start();
             }
+            this.soakBot?.onRoundLoaded(this.currentLevelOptions.levelId ?? GameConst.defaultLevelId);
         }
 
         this.syncRuntimeWithLevelState();

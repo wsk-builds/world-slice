@@ -247,7 +247,14 @@ export class ScoreJudge extends Component {
                 this.ringLayer?.destroyRing(ring);
             }
         }
-        this.droppingRings.clear();
+        if (this.droppingRings.size > 0) {
+            for (const [ring, state] of Array.from(this.droppingRings.entries())) {
+                if (ring.isValid && !ring.clearing && ring.isBodyReady) {
+                    this.applyRingHeightAtPillar(ring, state.pillar, state.targetDyFromBase);
+                }
+            }
+            this.droppingRings.clear();
+        }
         this.holdProgress.clear();
         this.matchDeferElapsed.left = 0;
         this.matchDeferElapsed.right = 0;

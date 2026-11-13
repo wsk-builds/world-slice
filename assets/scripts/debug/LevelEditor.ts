@@ -34,6 +34,7 @@ export interface LevelEditorExitInfo {
     readonly edited: boolean;
     readonly durationSec: number;
     readonly freeRingCount: number;
+    readonly editedRings?: LevelData['rings'];
 }
 
 export interface LevelEditorHost {
@@ -218,10 +219,12 @@ export class LevelEditor extends Component {
             }
         }
 
+        const edited = this.model.dirty;
         this.host?.onEditorExit({
-            edited: this.model.dirty,
+            edited,
             durationSec: this.model.durationSec,
             freeRingCount: freeCount,
+            ...(edited ? { editedRings: this.model.toLevelData().rings } : {}),
         });
     }
 
@@ -818,8 +821,11 @@ export class LevelEditor extends Component {
     }
 
     private onAdjustDuration(deltaSec: number): void {
+        const prevSec = this.model.durationSec;
         const nextSec = this.model.adjustDurationSec(deltaSec);
-        this.host?.onEditorDurationChanged?.(nextSec);
+        if (nextSec !== prevSec) {
+            this.host?.onEditorDurationChanged?.(nextSec);
+        }
         this.setStatus(`本关倒计时已调整为 ${nextSec} 秒`);
         this.refreshLabels();
         this.redraw();

@@ -22,16 +22,20 @@ function collectScriptFiles(dir: string): string[] {
 }
 
 describe('core 纯净度检查', () => {
-    it('assets/scripts/core/ 下不允许引用 cc', () => {
+    it('assets/scripts/core/ 下不允许引用 cc、Math.random() 或 wx./tt. 平台全局对象', () => {
         const files = collectScriptFiles(CORE_DIR);
         expect(files.length).toBeGreaterThan(0);
 
         const violations: string[] = [];
         const ccImportPattern = /(?:from\s+['"]cc(?:\/[^'"]*)?['"]|import\s+['"]cc(?:\/[^'"]*)?['"]|require\(\s*['"]cc(?:\/[^'"]*)?['"]\s*\))/;
+        const forbiddenGlobalPattern = /\b(?:Math\.random\s*\(|wx\.[A-Za-z_$]|tt\.[A-Za-z_$])/;
 
         for (const file of files) {
             const content = readFileSync(file, 'utf8');
-            if (ccImportPattern.test(content)) {
+            const strippedComments = content
+                .replace(/\/\*[\s\S]*?\*\//g, '')
+                .replace(/\/\/.*$/gm, '');
+            if (ccImportPattern.test(strippedComments) || forbiddenGlobalPattern.test(strippedComments)) {
                 violations.push(relative(process.cwd(), file));
             }
         }
