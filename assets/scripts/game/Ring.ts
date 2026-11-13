@@ -71,6 +71,7 @@ export class Ring extends Component {
 
     private dims: RingDimensions = calcRingDimensions({ kind: 'normal', color: 'red' });
     private meshRenderer: MeshRenderer | null = null;
+    private unbindMat: (() => void) | null = null;
     private showingFlashMat = false;
 
     get dimensions(): RingDimensions {
@@ -145,7 +146,7 @@ export class Ring extends Component {
 
             const mr = vNode.addComponent(MeshRenderer);
             mr.mesh = getOrCreateTorusMesh(this.dims.majorRadius, this.dims.tubeRadius);
-            bindRendererMaterial(
+            this.unbindMat = bindRendererMaterial(
                 () => (this.clearing ? getOrCreateRingFlashMaterial() : getOrCreateRingMaterial(this.spec)),
                 (m) => {
                     if (mr.isValid) mr.material = m;
@@ -218,6 +219,8 @@ export class Ring extends Component {
     }
 
     onDestroy(): void {
+        this.unbindMat?.();
+        this.unbindMat = null;
         if (this.view3DNode && this.view3DNode.isValid) {
             this.view3DNode.destroy();
             this.view3DNode = null;

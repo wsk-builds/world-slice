@@ -208,6 +208,10 @@ export class Hud extends Component {
         overlayTr.setAnchorPoint(0.5, 0.5);
         overlay.setPosition(innerCenter.x, innerCenter.y, 0);
         overlay.addComponent(BlockInputEvents);
+        overlay.on(Node.EventType.TOUCH_START, (e: EventTouch) => {
+            e.propagationStopped = true;
+            this.handleOverlayTap();
+        });
         overlay.active = false;
         this.node.addChild(overlay);
         this.overlayNode = overlay;

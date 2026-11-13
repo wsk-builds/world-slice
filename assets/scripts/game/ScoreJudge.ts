@@ -93,6 +93,7 @@ export class ScoreJudge extends Component {
     private readonly lockedOffsets = new Map<Ring, LockedLocalOffset>();
     private readonly flashingRings = new Map<Ring, FlashingRingState>();
     private readonly droppingRings = new Map<Ring, DroppingRingState>();
+    private readonly activeSetScratch = new Set<Ring>();
     private readonly lockListeners: RingLockedListener[] = [];
     private readonly matchListeners: MatchClearedListener[] = [];
 
@@ -533,7 +534,8 @@ export class ScoreJudge extends Component {
     }
 
     private pruneRemovedRings(activeRings: readonly Ring[]): void {
-        const activeSet = new Set<Ring>();
+        const activeSet = this.activeSetScratch;
+        activeSet.clear();
         for (let i = 0; i < activeRings.length; i++) {
             const r = activeRings[i];
             if (r.isValid) {
@@ -574,5 +576,6 @@ export class ScoreJudge extends Component {
                 }
             }
         }
+        activeSet.clear();
     }
 }

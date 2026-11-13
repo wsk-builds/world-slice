@@ -39,6 +39,7 @@ export class Pillar extends Component {
     collider3D!: PillarCollider3D;
 
     private geom: RingPillarGeometry = calcRingPillarGeometry(TankSpace.width);
+    private stepper: PhysicsStepper | null = null;
     private view3DRoot: Node | null = null;
     private spindleRenderer: MeshRenderer | null = null;
     private crossRenderer: MeshRenderer | null = null;
@@ -46,6 +47,7 @@ export class Pillar extends Component {
     private tickStates: number[] = [];
     private orbNode: Node | null = null;
     private orbMatHandle: DynamicShadedMaterialHandle | null = null;
+    private readonly unbindMats: Array<() => void> = [];
 
     private energyEnabled = true;
     private energyRatio = 0;
@@ -88,6 +90,7 @@ export class Pillar extends Component {
 
         const pillar = node.addComponent(Pillar);
         pillar.side = side;
+        pillar.stepper = stepper;
 
         const geom = calcRingPillarGeometry(TankSpace.width);
         const xPct = side === 'left' ? FeelConfig.pillarPosPct : 100 - FeelConfig.pillarPosPct;
@@ -112,11 +115,13 @@ export class Pillar extends Component {
         root3D.addChild(spindleNode);
         const spindleMr = spindleNode.addComponent(MeshRenderer);
         spindleMr.mesh = createPillarSpindleMesh(geom);
-        bindRendererMaterial(
-            () => getOrCreatePillarMaterials().shaftMat,
-            (m) => {
-                if (spindleMr.isValid) spindleMr.material = m;
-            },
+        this.unbindMats.push(
+            bindRendererMaterial(
+                () => getOrCreatePillarMaterials().shaftMat,
+                (m) => {
+                    if (spindleMr.isValid) spindleMr.material = m;
+                },
+            ),
         );
         this.spindleRenderer = spindleMr;
 
@@ -126,11 +131,13 @@ export class Pillar extends Component {
         root3D.addChild(crossNode);
         const crossMr = crossNode.addComponent(MeshRenderer);
         crossMr.mesh = createPillarCrossGuardMesh(geom);
-        bindRendererMaterial(
-            () => getOrCreatePillarMaterials().crossMat,
-            (m) => {
-                if (crossMr.isValid) crossMr.material = m;
-            },
+        this.unbindMats.push(
+            bindRendererMaterial(
+                () => getOrCreatePillarMaterials().crossMat,
+                (m) => {
+                    if (crossMr.isValid) crossMr.material = m;
+                },
+            ),
         );
         this.crossRenderer = crossMr;
 
@@ -149,11 +156,13 @@ export class Pillar extends Component {
             const idx = i;
             this.tickRenderers.push(tickMr);
             this.tickStates.push(-1);
-            bindRendererMaterial(
-                () => this.resolveTickMaterialByIndex(idx),
-                (m) => {
-                    if (tickMr.isValid) tickMr.material = m;
-                },
+            this.unbindMats.push(
+                bindRendererMaterial(
+                    () => this.resolveTickMaterialByIndex(idx),
+                    (m) => {
+                        if (tickMr.isValid) tickMr.material = m;
+                    },
+                ),
             );
         }
 
@@ -167,11 +176,13 @@ export class Pillar extends Component {
         orbMr.mesh = getOrCreatePillarOrbMesh(GameConst.pillarOrbRadiusPx);
         const orbMatHandle = createDynamicShadedMaterial(Palette.pillarEnergy.orbIdle, 0.72, 26.0, 0.45, 0.72);
         this.orbMatHandle = orbMatHandle;
-        bindRendererMaterial(
-            () => orbMatHandle.material,
-            (m) => {
-                if (orbMr.isValid) orbMr.material = m;
-            },
+        this.unbindMats.push(
+            bindRendererMaterial(
+                () => orbMatHandle.material,
+                (m) => {
+                    if (orbMr.isValid) orbMr.material = m;
+                },
+            ),
         );
 
         this.refreshTickMaterials(true);
@@ -264,7 +275,10 @@ export class Pillar extends Component {
     }
 
     update(dt: number): void {
-        if (!this.orbNode || !this.orbNode.isValid) {
+        if (!this.orbNode || !this.orbNode.isValid || !this.energyEnabled) {
+            return;
+        }
+        if (this.stepper && !this.stepper.running) {
             return;
         }
         const safeDt = Math.min(Math.max(0, dt), 0.1);
@@ -384,6 +398,10 @@ export class Pillar extends Component {
     }
 
     onDestroy(): void {
+        for (let i = 0; i < this.unbindMats.length; i++) {
+            this.unbindMats[i]();
+        }
+        this.unbindMats.length = 0;
         this.orbMatHandle?.dispose();
         this.orbMatHandle = null;
         if (this.view3DRoot && this.view3DRoot.isValid) {

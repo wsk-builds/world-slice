@@ -223,9 +223,19 @@ const boundRenderers: Array<{ getMat: () => Material; setMat: (m: Material) => v
 export function bindRendererMaterial(
     getMat: () => Material,
     setMat: (m: Material) => void,
-): void {
+): () => void {
     setMat(getMat());
-    boundRenderers.push({ getMat, setMat });
+    if (loadedMatcapEffect) {
+        return () => {};
+    }
+    const entry = { getMat, setMat };
+    boundRenderers.push(entry);
+    return () => {
+        const idx = boundRenderers.indexOf(entry);
+        if (idx >= 0) {
+            boundRenderers.splice(idx, 1);
+        }
+    };
 }
 
 function upgradeAllCachedMaterials(eff: EffectAsset): void {
@@ -316,9 +326,10 @@ function upgradeAllCachedMaterials(eff: EffectAsset): void {
         try {
             boundRenderers[i].setMat(boundRenderers[i].getMat());
         } catch {
-            boundRenderers.splice(i, 1);
+            // 忽略已销毁的渲染器
         }
     }
+    boundRenderers.length = 0;
 }
 
 function parseRingSpecFromKey(key: string): RingSpec {
