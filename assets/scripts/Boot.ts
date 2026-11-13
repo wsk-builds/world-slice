@@ -16,6 +16,7 @@ import { PillarEnergyController } from './game/PillarEnergyController';
 import { RingLayer } from './game/RingLayer';
 import { ScoreJudge } from './game/ScoreJudge';
 import { Tank } from './game/Tank';
+import { TidePullSkill } from './game/TidePullSkill';
 import { WaterForce } from './game/WaterForce';
 import { Bubbles } from './render/Bubbles';
 import { RenderLayers, Stage3DRig } from './render/Stage3DRig';
@@ -49,6 +50,7 @@ export class Boot extends Component implements LevelSessionHost {
     private scoreJudge: ScoreJudge | null = null;
     private pillarEnergy: PillarEnergyController | null = null;
     private funnel: Funnel | null = null;
+    private tidePullSkill: TidePullSkill | null = null;
     private levelLoader: LevelLoader | null = null;
     private leftJetBtn: JetButton | null = null;
     private rightJetBtn: JetButton | null = null;
@@ -97,10 +99,19 @@ export class Boot extends Component implements LevelSessionHost {
         const scoreJudge = ScoreJudge.attach(tankRoot, leftPillar, rightPillar, ringLayer);
         const pillarEnergy = PillarEnergyController.attach(tankRoot, leftPillar, rightPillar, scoreJudge);
         const funnel = Funnel.attach(tankRoot, leftPillar, rightPillar, ringLayer, scoreJudge);
+        const tidePullSkill = TidePullSkill.attach(tankRoot, {
+            flowField,
+            funnel,
+            energyController: pillarEnergy,
+            scoreJudge,
+            leftPillar,
+        });
         const ringSpawner = tankRoot.addComponent(RingDebugSpawner);
         ringSpawner.ringLayer = ringLayer;
         ringSpawner.scoreJudge = scoreJudge;
         ringSpawner.onClearAll = () => {
+            this.tidePullSkill?.reset();
+            this.funnel?.reset();
             this.pillarEnergy?.reset(this.currentLevelOptions.pillarEnergy);
             this.levelState.reset({
                 durationSec: this.currentLevelOptions.durationSec,
@@ -120,6 +131,7 @@ export class Boot extends Component implements LevelSessionHost {
         this.scoreJudge = scoreJudge;
         this.pillarEnergy = pillarEnergy;
         this.funnel = funnel;
+        this.tidePullSkill = tidePullSkill;
 
         stepper.onAfterStep(this.onAfterPhysicsStep);
         this.unsubLevelStatus = this.levelState.onStatusChange(() => {
@@ -202,6 +214,7 @@ export class Boot extends Component implements LevelSessionHost {
             this.stepper.resetElapsed();
         }
         this.scoreJudge?.reset();
+        this.tidePullSkill?.reset();
         this.pillarEnergy?.reset(merged.pillarEnergy);
         this.funnel?.reset();
         this.ringLayer?.clearAll();

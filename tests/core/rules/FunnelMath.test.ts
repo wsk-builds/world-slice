@@ -274,4 +274,62 @@ describe('FunnelMath 入柱宽容漏斗（T013）', () => {
         const hitMax = dropRingWithTolerance(1.0, 42, 14, 34, -26);
         expect(hitMax.caught).toBe(true);
     });
+
+    it('潮引 boost 保底阈值在默认 10% 与 0% 宽容度下均提供稳定吸纳范围、倾角容忍与居中回正，并严格避开柱杆侧撞', () => {
+        const zeroFunnel = solveFeel({ ...DEFAULT_FEEL_CONFIG, funnelTolerance: 0 }).funnel;
+        const tideBoost = {
+            radiusScale: 2.5,
+            maxTiltDeg: 68,
+            pullScale: 2.2,
+            alignScale: 2.2,
+            minRadiusPx: 155,
+            minPullAccel: 1200,
+            minAlignRate: 9.0,
+            maxVy: 85,
+        };
+
+        // 即使基础宽容度为 0 或 0.1，叠加潮引 boost 后仍保证有效吸纳下限
+        const fromZero = resolveEffectiveFunnelParams(zeroFunnel, tideBoost);
+        expect(fromZero.radiusPx).toBe(155);
+        expect(fromZero.maxAngleDeg).toBe(68);
+        expect(fromZero.pullAccel).toBe(1200);
+        expect(fromZero.alignRate).toBe(9.0);
+        expect(fromZero.maxVy).toBe(85);
+
+        const fromDefault = resolveEffectiveFunnelParams(defaultFunnel, tideBoost);
+        expect(fromDefault.radiusPx).toBeGreaterThanOrEqual(155);
+        expect(fromDefault.pullAccel).toBeGreaterThanOrEqual(1200);
+
+        // 缓慢上浮趋缓（vy = +35 < 85）的偏斜圈可被潮引漏斗接管，高速喷起（vy = +150）则不硬扯
+        const qTilt = quatFromEulerDeg(38, 0, -25, { x: 0, y: 0, z: 0, w: 1 });
+        const body = new TorusBody3D({
+            x: pillarX + 90,
+            y: collider.tipY + 70,
+            z: 20,
+            qx: qTilt.x,
+            qy: qTilt.y,
+            qz: qTilt.z,
+            qw: qTilt.w,
+            majorRadius: majorR,
+            tubeRadius: tubeR,
+        });
+        body.vy = 35;
+        const resSlowRise = computeFunnelForce3D(body, pillarTarget, fromDefault);
+        expect(resSlowRise.active).toBe(true);
+        expect(resSlowRise.fx).toBeLessThan(0);
+        expect(resSlowRise.fz).toBeLessThan(0);
+        expect(Math.hypot(resSlowRise.tx, resSlowRise.tz)).toBeGreaterThan(0);
+
+        body.vy = 150;
+        expect(computeFunnelForce3D(body, pillarTarget, fromDefault).active).toBe(false);
+
+        // 低于柱尖肩部且未套入内孔的圈即使在潮引期间也不会被侧向拉撞柱杆外壁
+        body.vy = -40;
+        body.setPose(pillarX + innerR + 12, collider.tipY - tubeR - 10, 0, qTilt.x, qTilt.y, qTilt.z, qTilt.w);
+        expect(computeFunnelForce3D(body, pillarTarget, fromDefault).active).toBe(false);
+
+        // 满柱不吸圈
+        body.setPose(pillarX + 70, collider.tipY + 60, 0, qTilt.x, qTilt.y, qTilt.z, qTilt.w);
+        expect(computeFunnelForce3D(body, { ...pillarTarget, isFull: true }, fromDefault).active).toBe(false);
+    });
 });

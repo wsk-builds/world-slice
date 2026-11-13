@@ -185,6 +185,29 @@ export const GameConst = {
 
     /** 柱尖 3D 灵珠底部相对柱尖顶点的留隙（像素） */
     pillarOrbTipGapPx: 2.0,
+
+    /** T018 左柱技能「潮引」：漏斗增益与下限保证（确保低宽容度或 0 宽容度下依然显著吸纳） */
+    tidePullFunnelRadiusScale: 2.5,
+    tidePullFunnelMinRadiusPx: 165,
+    tidePullFunnelMaxTiltDeg: 72,
+    tidePullFunnelPullScale: 2.6,
+    tidePullFunnelMinPullAccel: 2600,
+    tidePullFunnelMinAlignRate: 11.5,
+    tidePullFunnelMaxVy: 95,
+
+    /** T018 左柱技能「潮引」：FlowField 漩流场参数 */
+    tidePullSwirlRadiusPx: 250,
+    tidePullSwirlInwardSpeed: 240,
+    tidePullSwirlTangentSpeed: 105,
+    tidePullSwirlDownwardSpeed: 0,
+    tidePullSwirlCoreRadiusPx: 22,
+    tidePullSwirlFocusOffsetY: 24,
+
+    /** T018 左柱技能「潮引」：灰盒柱尖漩流线视觉参数 */
+    tidePullVortexArmCount: 3,
+    tidePullVortexMaxRadiusPx: 118,
+    tidePullVortexMinRadiusPx: 14,
+    tidePullVortexSpinRadPerSec: 4.2,
 } as const;
 
 export interface RingPillarGeometry {

@@ -78,6 +78,10 @@ export const Palette = {
         orbFlash: hex('#FFF7CC'),
     },
 
+    /** T018 左柱「潮引」漩流线配色 */
+    tidePullVortexOuter: hex('#5CE6D0', 0.78),
+    tidePullVortexInner: hex('#FFF7CC', 0.92),
+
     /** 灰盒七种锁脉环配色 */
     ring: {
         red: hex('#EE5253'),
