@@ -1,10 +1,10 @@
 import {
     _decorator, Color, Component, Graphics, Layers, Node, PHYSICS_2D_PTM_RATIO, toRadian, UITransform, Vec2,
 } from 'cc';
-import { FeelConfig } from '../config/FeelConfig';
 import { GameConst } from '../config/GameConst';
 import { Palette } from '../config/Palette';
 import { TankSpace } from '../config/TankSpace';
+import { SolvedFeelConfig } from '../core/flow/FeelSolver';
 import { RingSpec } from '../core/rings/RingKinds';
 import { PhysicsStepper } from './PhysicsStepper';
 import { calcRingDimensions, Ring } from './Ring';
@@ -93,6 +93,18 @@ export class RingLayer extends Component {
         return this.rings;
     }
 
+    /** 同步所有活跃圈的底层物理参数（供 applyFeel 实时生效） */
+    applyConfigToAll(): void {
+        for (let i = this.rings.length - 1; i >= 0; i--) {
+            const ring = this.rings[i];
+            if (!ring.isValid) {
+                this.rings.splice(i, 1);
+                continue;
+            }
+            ring.applyConfig();
+        }
+    }
+
     lateUpdate(): void {
         this.redrawAll();
     }
@@ -108,7 +120,7 @@ export class RingLayer extends Component {
             if (ring.locked || !ring.body) {
                 continue;
             }
-            const accelPx = FeelConfig.baseSinkAccel * ring.kindConfig.sinkScale;
+            const accelPx = SolvedFeelConfig.baseSinkAccel * ring.kindConfig.sinkScale;
             const mass = ring.body.getMass();
             const fy = -(mass * accelPx * scale) / PHYSICS_2D_PTM_RATIO;
             ring.body.applyForceToCenter(tempForce.set(0, fy), true);

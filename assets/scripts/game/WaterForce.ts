@@ -1,5 +1,5 @@
 import { _decorator, Component, Node, PHYSICS_2D_PTM_RATIO, Vec2 } from 'cc';
-import { FeelConfig } from '../config/FeelConfig';
+import { SolvedFeelConfig } from '../core/flow/FeelSolver';
 import { FlowField, FlowVec2 } from '../core/flow/FlowField';
 import { calcEndpointFollowAccel } from '../core/flow/WaterFollow';
 import { Bladder } from '../core/input/Bladder';
@@ -16,14 +16,15 @@ const tempWorldRight = new Vec2();
 const tempEndWorldVel = new Vec2();
 const tempForce = new Vec2();
 const tempWaterVel: FlowVec2 = { x: 0, y: 0 };
-const tempAccel: FlowVec2 = { x: 0, y: 0 };
+const tempLeftAccel: FlowVec2 = { x: 0, y: 0 };
+const tempRightAccel: FlowVec2 = { x: 0, y: 0 };
 
 /**
- * 水流施力组件（GDD §3.3，T008），挂在 TankRoot 上：
+ * 水流施力组件（GDD §3.3，T008 / T010），挂在 TankRoot 上：
  * 每个物理步之前：
  * 1. 将左右气囊的当前出水强度喂给 FlowField，并按物理步长 dt 推进 FlowField 与气囊；
  * 2. 对每个未锁定圈的左右两个端点分别采样缸坐标水速；
- * 3. 按「跟随度 ×（水速 − 端点速度）」计算加速度，换算为 Box2D 米制单位力并分别作用在左右端点上（天然产生翻滚力矩）。
+ * 3. 按「跟随度 ×（水速 − 端点速度）」计算加速度（按翻滚灵敏度调整差分力矩），换算为 Box2D 米制单位力并施于左右端点。
  */
 @ccclass('WaterForce')
 export class WaterForce extends Component {
@@ -105,6 +106,7 @@ export class WaterForce extends Component {
         const origin = this.node.worldPosition;
         const sx = this.node.worldScale.x || 1;
         const sy = this.node.worldScale.y || 1;
+        const torqueScale = SolvedFeelConfig.tumbleTorqueScale;
 
         for (let i = 0; i < rings.length; i++) {
             const ring = rings[i];
@@ -115,19 +117,31 @@ export class WaterForce extends Component {
             ring.getWorldEnds(tempWorldLeft, tempWorldRight);
             const halfMass = 0.5 * ring.body.getMass();
 
-            this.applyForceAtEndpoint(ring, tempWorldLeft, origin.x, origin.y, sx, sy, halfMass);
-            this.applyForceAtEndpoint(ring, tempWorldRight, origin.x, origin.y, sx, sy, halfMass);
+            this.computeAccelAtEndpoint(ring, tempWorldLeft, origin.x, origin.y, sx, sy, tempLeftAccel);
+            this.computeAccelAtEndpoint(ring, tempWorldRight, origin.x, origin.y, sx, sy, tempRightAccel);
+
+            if (torqueScale !== 1) {
+                const avgX = 0.5 * (tempLeftAccel.x + tempRightAccel.x);
+                const avgY = 0.5 * (tempLeftAccel.y + tempRightAccel.y);
+                tempLeftAccel.x = avgX + torqueScale * (tempLeftAccel.x - avgX);
+                tempLeftAccel.y = avgY + torqueScale * (tempLeftAccel.y - avgY);
+                tempRightAccel.x = avgX + torqueScale * (tempRightAccel.x - avgX);
+                tempRightAccel.y = avgY + torqueScale * (tempRightAccel.y - avgY);
+            }
+
+            this.applyAccelAtPoint(ring, tempWorldLeft, tempLeftAccel, sx, sy, halfMass);
+            this.applyAccelAtPoint(ring, tempWorldRight, tempRightAccel, sx, sy, halfMass);
         }
     };
 
-    private applyForceAtEndpoint(
+    private computeAccelAtEndpoint(
         ring: Ring,
         worldEnd: Vec2,
         originX: number,
         originY: number,
         sx: number,
         sy: number,
-        halfMass: number,
+        outAccel: FlowVec2,
     ): void {
         const tankX = (worldEnd.x - originX) / sx;
         const tankY = (worldEnd.y - originY) / sy;
@@ -143,13 +157,22 @@ export class WaterForce extends Component {
             tempWaterVel.y,
             endTankVx,
             endTankVy,
-            FeelConfig.flowFollowRate,
+            SolvedFeelConfig.flowFollowRate,
             ring.kindConfig.flowFollow,
-            tempAccel,
+            outAccel,
         );
+    }
 
-        const fx = (halfMass * tempAccel.x * sx) / PHYSICS_2D_PTM_RATIO;
-        const fy = (halfMass * tempAccel.y * sy) / PHYSICS_2D_PTM_RATIO;
+    private applyAccelAtPoint(
+        ring: Ring,
+        worldEnd: Vec2,
+        accel: FlowVec2,
+        sx: number,
+        sy: number,
+        halfMass: number,
+    ): void {
+        const fx = (halfMass * accel.x * sx) / PHYSICS_2D_PTM_RATIO;
+        const fy = (halfMass * accel.y * sy) / PHYSICS_2D_PTM_RATIO;
 
         if (Math.abs(fx) > FORCE_EPSILON || Math.abs(fy) > FORCE_EPSILON) {
             ring.body.applyForce(tempForce.set(fx, fy), worldEnd, true);

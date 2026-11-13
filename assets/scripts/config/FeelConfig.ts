@@ -1,74 +1,72 @@
 /**
- * 手感参数配置（GDD §3.4）。
- * T004 先放入柱子位置起始值；其余体感参数在 T010 补齐。
+ * 12 个体感结果参数配置（GDD §3.4，T010）。
+ * 所有底层物理量（下沉加速度、跟随度、喷流强度、角阻尼、漏斗等）均由 core/flow/FeelSolver.ts 换算得出。
  */
 export interface FeelParams {
-    /** 左柱距缸左侧百分比（右柱对称在 100 - pillarPosPct） */
-    pillarPosPct: number;
-    /** 柱底离缸底百分比 */
-    pillarBottomPct: number;
-    /** 左海眼距缸左侧百分比（右海眼对称在 100 - nozzlePosPct，GDD §3.4：17% / 83%） */
-    nozzlePosPct: number;
-    /** 海眼喷流向缸中心内倾角（度，GDD §3.4：约 10°） */
-    nozzleTiltDeg: number;
-    /** 全缸环流衰减至 5% 的时间（秒，GDD §3.3：1.5–2.0 秒，起始值 1.75） */
-    circulationDecaySec: number;
-    /** 松手或单口气喷完后主喷流余韵衰减至 5% 的时间（秒，GDD §3.3：0.25–0.3 秒） */
-    jetAfterglowSec: number;
-    /** 气囊单口气最长持续出水时间（秒，GDD §2.2 / §3.4：约 0.65 秒） */
+    /** 1. 普通圈从水面沉到缸底的秒数（起始值 3 秒） */
+    sinkSec: number;
+    /** 2. 轻点一下（约 0.1 秒）推升普通圈达到的缸高百分比（起始值 40%） */
+    tapLiftPct: number;
+    /** 3. 按满一口气推升普通圈达到的缸高百分比（起始值 85%） */
+    holdLiftPct: number;
+    /** 4. 气囊单口气最长持续出水时间（秒，GDD §2.2 / §3.4：起始值 0.65） */
     bladderMaxBreathSec: number;
-    /** 气囊松手回弹吸满时间（秒，GDD §3.4 / T010：约 0.2–0.25 秒，起始值 0.22） */
+    /** 5. 气囊松手回弹吸满时间（秒，GDD §3.4：起始值 0.22） */
     bladderRefillSec: number;
-    /**
-     * 临时底层物理与水流参数（T005/T006/T008 使用），T010 接入 FeelSolver 后按体感参数换算覆盖。
-     * 基准下沉加速度（像素/秒²），配合 ringLinearDamping=2.5 约 3 秒沉底
-     */
-    baseSinkAccel: number;
-    /** 圈的线性阻尼（模拟水的底噪粘滞阻力，主要水流阻尼由 flowFollowRate 提供） */
-    ringLinearDamping: number;
-    /** 圈的角阻尼（抑制旋转疯转） */
-    ringAngularDamping: number;
-    /** 圈对水流的基准跟随度（1/秒），乘以圈种 flowFollow 后按 跟随度×(水速-端点速度) 施力 */
-    flowFollowRate: number;
-    /** 圈横条碰撞摩擦系数 */
-    ringFriction: number;
-    /** 圈碰撞弹性系数 */
-    ringRestitution: number;
-    /** 主喷流在海眼口中心的最大水速（像素/秒） */
-    jetMaxSpeed: number;
-    /** 全缸环流满动量时的最大边缘水速（像素/秒） */
-    circulationMaxSpeed: number;
-    /** 喷水向环流注入动量的速率（1/秒） */
-    circulationChargeRate: number;
-    /** 平静时的微弱底噪扰动水速（像素/秒） */
-    turbulenceBaseSpeed: number;
-    /** 水流活跃时附加的扰动水速（像素/秒） */
-    turbulenceFlowSpeed: number;
+    /** 6. 左柱距缸左侧百分比（右柱对称在 100 - pillarPosPct，起始值 32%） */
+    pillarPosPct: number;
+    /** 7. 柱底离缸底百分比（起始值 26%） */
+    pillarBottomPct: number;
+    /** 8. 左海眼距缸左侧百分比（右海眼对称在 100 - nozzlePosPct，起始值 17%） */
+    nozzlePosPct: number;
+    /** 9. 海眼喷流向缸中心内倾角（度，起始值 10°） */
+    nozzleTiltDeg: number;
+    /** 10. 全缸环流衰减至 5% 的时间（秒，GDD §3.3：起始值 1.75） */
+    circulationDecaySec: number;
+    /** 11. 翻滚灵敏度（0–1 旋钮，起始值 0.5） */
+    tumbleSensitivity: number;
+    /** 12. 入柱宽容（0–1 旋钮，起始值 0.5） */
+    funnelTolerance: number;
 }
 
 export const DEFAULT_FEEL_CONFIG: Readonly<FeelParams> = {
+    sinkSec: 3,
+    tapLiftPct: 40,
+    holdLiftPct: 85,
+    bladderMaxBreathSec: 0.65,
+    bladderRefillSec: 0.22,
     pillarPosPct: 32,
     pillarBottomPct: 26,
     nozzlePosPct: 17,
     nozzleTiltDeg: 10,
     circulationDecaySec: 1.75,
-    jetAfterglowSec: 0.28,
-    bladderMaxBreathSec: 0.65,
-    bladderRefillSec: 0.22,
-    baseSinkAccel: 775,
-    ringLinearDamping: 0.5,
-    ringAngularDamping: 4.0,
-    flowFollowRate: 3.5,
-    ringFriction: 0.03,
-    ringRestitution: 0.12,
-    jetMaxSpeed: 7600,
-    circulationMaxSpeed: 300,
-    circulationChargeRate: 2.4,
-    turbulenceBaseSpeed: 10,
-    turbulenceFlowSpeed: 22,
+    tumbleSensitivity: 0.5,
+    funnelTolerance: 0.5,
 };
 
-/** 运行时可调节的手感参数实例 */
+/** 不作为调参滑块暴露的底层物理基数，供 FeelSolver 与 FlowField 换算使用 */
+export const FEEL_BASE_CONST = {
+    /** 圈在水中除水流跟随阻力外的粘滞线性阻尼（1/秒） */
+    ringLinearDamping: 0.5,
+    /** 松手或单口气喷完后主喷流余韵衰减至 5% 的时间（秒，GDD §3.3：0.25–0.3 秒） */
+    jetAfterglowSec: 0.28,
+    /** 圈横条碰撞摩擦系数 */
+    ringFriction: 0.03,
+    /** 圈碰撞弹性系数 */
+    ringRestitution: 0.12,
+    /** 基准全缸环流满动量边缘水速（像素/秒） */
+    circulationMaxSpeed: 300,
+    /** 喷水向环流注入动量的速率（1/秒） */
+    circulationChargeRate: 2.4,
+    /** 平静时的微弱底噪扰动水速（像素/秒） */
+    turbulenceBaseSpeed: 10,
+    /** 水流活跃时附加的扰动水速（像素/秒） */
+    turbulenceFlowSpeed: 22,
+    /** 轻点一下的时长定义（秒，GDD §2.2：约 0.1 秒） */
+    tapDurationSec: 0.1,
+} as const;
+
+/** 运行时可调节的 12 个体感参数实例 */
 export const FeelConfig: FeelParams = {
     ...DEFAULT_FEEL_CONFIG,
 };

@@ -1,11 +1,17 @@
 import { FeelConfig, FeelParams } from '../../config/FeelConfig';
-import { calcRingPillarGeometry, GameConst } from '../../config/GameConst';
+import { GameConst } from '../../config/GameConst';
 import { Point2D, TankSpace } from '../../config/TankSpace';
 import { CurlNoise } from './CurlNoise';
+import { solveFeel, SolvedFeelConfig } from './FeelSolver';
+import {
+    buildJetConeGeometry,
+    JetConeGeometry,
+    LN20,
+    NozzlePose,
+    sampleSingleNozzleVelocity,
+    stepJetAfterglowLevel,
+} from './JetProfile';
 
-/** ln(20) ≈ 2.9957：使指数衰减 exp(-LN20 * t / T) 在 t = T 时精确落到 5% */
-const LN20 = Math.log(20);
-const DEG_TO_RAD = Math.PI / 180;
 const ZERO_THRESHOLD = 1e-6;
 
 export type FlowSide = 'left' | 'right';
@@ -52,6 +58,7 @@ export function buildFlowFieldConfig(
     overrides: Partial<FlowFieldConfig> = {},
     feel: Readonly<FeelParams> = FeelConfig,
 ): FlowFieldConfig {
+    const solved = feel === FeelConfig ? SolvedFeelConfig : solveFeel(feel);
     return {
         seed: overrides.seed ?? 1,
         tankWidth: overrides.tankWidth ?? TankSpace.width,
@@ -61,13 +68,13 @@ export function buildFlowFieldConfig(
         nozzleTiltDeg: overrides.nozzleTiltDeg ?? feel.nozzleTiltDeg,
         jetMouthHalfWidth: overrides.jetMouthHalfWidth ?? GameConst.jetMouthHalfWidth,
         jetHalfAngleDeg: overrides.jetHalfAngleDeg ?? GameConst.jetHalfAngleDeg,
-        jetMaxSpeed: overrides.jetMaxSpeed ?? feel.jetMaxSpeed,
-        jetAfterglowSec: overrides.jetAfterglowSec ?? feel.jetAfterglowSec,
-        circulationMaxSpeed: overrides.circulationMaxSpeed ?? feel.circulationMaxSpeed,
-        circulationChargeRate: overrides.circulationChargeRate ?? feel.circulationChargeRate,
+        jetMaxSpeed: overrides.jetMaxSpeed ?? solved.jetMaxSpeed,
+        jetAfterglowSec: overrides.jetAfterglowSec ?? solved.jetAfterglowSec,
+        circulationMaxSpeed: overrides.circulationMaxSpeed ?? solved.circulationMaxSpeed,
+        circulationChargeRate: overrides.circulationChargeRate ?? solved.circulationChargeRate,
         circulationDecaySec: overrides.circulationDecaySec ?? feel.circulationDecaySec,
-        turbulenceBaseSpeed: overrides.turbulenceBaseSpeed ?? feel.turbulenceBaseSpeed,
-        turbulenceFlowSpeed: overrides.turbulenceFlowSpeed ?? feel.turbulenceFlowSpeed,
+        turbulenceBaseSpeed: overrides.turbulenceBaseSpeed ?? solved.turbulenceBaseSpeed,
+        turbulenceFlowSpeed: overrides.turbulenceFlowSpeed ?? solved.turbulenceFlowSpeed,
         turbulenceSpatialScale: overrides.turbulenceSpatialScale ?? GameConst.turbulenceSpatialScale,
         turbulenceTimeRate: overrides.turbulenceTimeRate ?? GameConst.turbulenceTimeRate,
         turbulenceScale: overrides.turbulenceScale ?? 1,
@@ -75,12 +82,7 @@ export function buildFlowFieldConfig(
     };
 }
 
-export interface NozzlePose {
-    x: number;
-    y: number;
-    axisX: number;
-    axisY: number;
-}
+export type { NozzlePose };
 
 /**
  * 基础项 1：左右海眼主喷流（下窄上宽锥形，底部强、到柱尖高度发散变柔，松手 0.25–0.3 秒余韵）。
@@ -93,41 +95,17 @@ export class JetFlowTerm implements FlowTermObject {
     private leftLevel = 0;
     private rightLevel = 0;
 
-    private leftNozzle: NozzlePose = { x: 0, y: 0, axisX: 0, axisY: 1 };
-    private rightNozzle: NozzlePose = { x: 0, y: 0, axisX: 0, axisY: 1 };
-    private mouthHalfWidth = 32;
-    private tanHalfAngle = Math.tan(14 * DEG_TO_RAD);
-    private apexOffset = 128;
-    private softDist = 290;
-    private jetRange = 584;
+    private cone: JetConeGeometry;
     private jetMaxSpeed = 1100;
     private afterglowSec = 0.28;
 
     constructor(config: FlowFieldConfig) {
+        this.cone = buildJetConeGeometry(config);
         this.applyConfig(config);
     }
 
     applyConfig(config: FlowFieldConfig): void {
-        const tiltRad = config.nozzleTiltDeg * DEG_TO_RAD;
-        const sinT = Math.sin(tiltRad);
-        const cosT = Math.max(0.2, Math.cos(tiltRad));
-
-        const leftX = (config.nozzlePosPct / 100) * config.tankWidth;
-        const rightX = ((100 - config.nozzlePosPct) / 100) * config.tankWidth;
-        this.leftNozzle = { x: leftX, y: 0, axisX: sinT, axisY: cosT };
-        this.rightNozzle = { x: rightX, y: 0, axisX: -sinT, axisY: cosT };
-
-        this.mouthHalfWidth = Math.max(1, config.jetMouthHalfWidth);
-        const halfRad = Math.max(1, config.jetHalfAngleDeg) * DEG_TO_RAD;
-        this.tanHalfAngle = Math.tan(halfRad);
-        this.apexOffset = this.mouthHalfWidth / this.tanHalfAngle;
-
-        const geom = calcRingPillarGeometry(config.tankWidth);
-        const pillarBottomY = (config.pillarBottomPct / 100) * config.tankHeight;
-        const pillarTipY = Math.max(40, pillarBottomY + geom.pillarBaseHeight + geom.pillarHeight);
-
-        this.softDist = pillarTipY / cosT;
-        this.jetRange = config.tankHeight / cosT;
+        this.cone = buildJetConeGeometry(config);
         this.jetMaxSpeed = Math.max(0, config.jetMaxSpeed);
         this.afterglowSec = Math.max(0.01, config.jetAfterglowSec);
     }
@@ -158,7 +136,7 @@ export class JetFlowTerm implements FlowTermObject {
     }
 
     getNozzlePose(side: FlowSide): Readonly<NozzlePose> {
-        return side === 'left' ? this.leftNozzle : this.rightNozzle;
+        return side === 'left' ? this.cone.leftNozzle : this.cone.rightNozzle;
     }
 
     reset(): void {
@@ -173,75 +151,41 @@ export class JetFlowTerm implements FlowTermObject {
             return;
         }
         const decay = Math.exp((-LN20 * dt) / this.afterglowSec);
-        this.leftLevel = stepJetLevel(this.leftLevel, this.leftInput, decay);
-        this.rightLevel = stepJetLevel(this.rightLevel, this.rightInput, decay);
+        this.leftLevel = stepJetAfterglowLevel(this.leftLevel, this.leftInput, decay);
+        this.rightLevel = stepJetAfterglowLevel(this.rightLevel, this.rightInput, decay);
     }
 
     sample(x: number, y: number, out: FlowVec2): void {
         let vx = 0;
         let vy = 0;
         if (this.leftLevel > 0) {
-            const l = this.sampleSingleNozzle(this.leftNozzle, this.leftLevel, x, y, scratchNozzle);
+            const l = sampleSingleNozzleVelocity(
+                this.cone.leftNozzle,
+                this.cone,
+                this.jetMaxSpeed,
+                this.leftLevel,
+                x,
+                y,
+                scratchNozzle,
+            );
             vx += l.x;
             vy += l.y;
         }
         if (this.rightLevel > 0) {
-            const r = this.sampleSingleNozzle(this.rightNozzle, this.rightLevel, x, y, scratchNozzle);
+            const r = sampleSingleNozzleVelocity(
+                this.cone.rightNozzle,
+                this.cone,
+                this.jetMaxSpeed,
+                this.rightLevel,
+                x,
+                y,
+                scratchNozzle,
+            );
             vx += r.x;
             vy += r.y;
         }
         out.x = vx;
         out.y = vy;
-    }
-
-    private sampleSingleNozzle(
-        nozzle: NozzlePose,
-        level: number,
-        x: number,
-        y: number,
-        out: FlowVec2,
-    ): FlowVec2 {
-        const rx = x - nozzle.x;
-        const ry = y - nozzle.y;
-        const along = rx * nozzle.axisX + ry * nozzle.axisY;
-        if (along < 0 || along >= this.jetRange) {
-            out.x = 0;
-            out.y = 0;
-            return out;
-        }
-
-        const perp = -rx * nozzle.axisY + ry * nozzle.axisX;
-        const halfWidth = this.mouthHalfWidth + along * this.tanHalfAngle;
-        const absPerp = Math.abs(perp);
-        if (absPerp >= halfWidth) {
-            out.x = 0;
-            out.y = 0;
-            return out;
-        }
-
-        // 轴向：底部冲力强，到柱尖高度发散变柔，到水面平缓归零（中心线上严格单调递减）
-        const sNorm = along / this.softDist;
-        const rangeNorm = along / this.jetRange;
-        const axialFactor = (1 / (1 + sNorm * 1.2)) * (1 - rangeNorm * rangeNorm);
-
-        // 横向：中心最强，向锥形边缘平滑过渡为 0
-        const u = absPerp / halfWidth;
-        const oneMinusU2 = 1 - u * u;
-        const radialFactor = oneMinusU2 * oneMinusU2;
-
-        const speed = this.jetMaxSpeed * level * axialFactor * radialFactor;
-
-        // 方向：沿锥形虚拟顶点向外发散，中心线上严格等于海眼内倾方向
-        const rayAlong = along + this.apexOffset;
-        const rayLen = Math.hypot(rayAlong, perp);
-        const ca = rayAlong / rayLen;
-        const cp = perp / rayLen;
-        const dirX = nozzle.axisX * ca - nozzle.axisY * cp;
-        const dirY = nozzle.axisY * ca + nozzle.axisX * cp;
-
-        out.x = dirX * speed;
-        out.y = dirY * speed;
-        return out;
     }
 }
 
@@ -591,15 +535,4 @@ function clamp01(value: number): number {
         return 0;
     }
     return value >= 1 ? 1 : value;
-}
-
-function stepJetLevel(current: number, target: number, decay: number): number {
-    if (target >= current) {
-        return target;
-    }
-    const next = target + (current - target) * decay;
-    if (target === 0 && next < 1e-4) {
-        return 0;
-    }
-    return next;
 }

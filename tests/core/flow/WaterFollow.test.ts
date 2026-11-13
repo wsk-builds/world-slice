@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_FEEL_CONFIG } from '../../../assets/scripts/config/FeelConfig';
 import { calcRingPillarGeometry } from '../../../assets/scripts/config/GameConst';
 import { TankSpace } from '../../../assets/scripts/config/TankSpace';
+import { SolvedFeelConfig } from '../../../assets/scripts/core/flow/FeelSolver';
 import { FlowField } from '../../../assets/scripts/core/flow/FlowField';
 import { calcEndpointFollowAccel } from '../../../assets/scripts/core/flow/WaterFollow';
 import { Bladder } from '../../../assets/scripts/core/input/Bladder';
@@ -18,7 +19,7 @@ interface SimRing2D {
 
 /**
  * 与 Ring + RingLayer + WaterForce 完全同构的轻量 2D 双端点刚体积分，
- * 用于校验 T008 水流施力公式与 FeelConfig 临时参数的物理行为。
+ * 用于校验 T008 水流施力公式与 T010 FeelSolver 换算结果的物理行为。
  */
 function stepSimRing(
     ring: SimRing2D,
@@ -29,7 +30,7 @@ function stepSimRing(
     sinkScale = 1,
     flowFollow = 1,
 ): void {
-    const feel = DEFAULT_FEEL_CONFIG;
+    const solved = SolvedFeelConfig;
     const cosA = Math.cos(ring.angleRad);
     const sinA = Math.sin(ring.angleRad);
 
@@ -47,11 +48,11 @@ function stepSimRing(
     const wLeft = field.velocityAt(lx, ly);
     const wRight = field.velocityAt(rx, ry);
 
-    const aLeft = calcEndpointFollowAccel(wLeft.x, wLeft.y, lvx, lvy, feel.flowFollowRate, flowFollow);
-    const aRight = calcEndpointFollowAccel(wRight.x, wRight.y, rvx, rvy, feel.flowFollowRate, flowFollow);
+    const aLeft = calcEndpointFollowAccel(wLeft.x, wLeft.y, lvx, lvy, solved.flowFollowRate, flowFollow);
+    const aRight = calcEndpointFollowAccel(wRight.x, wRight.y, rvx, rvy, solved.flowFollowRate, flowFollow);
 
     const ax = 0.5 * (aLeft.x + aRight.x);
-    const ay = 0.5 * (aLeft.y + aRight.y) - feel.baseSinkAccel * sinkScale;
+    const ay = 0.5 * (aLeft.y + aRight.y) - solved.baseSinkAccel * sinkScale;
 
     // 力矩 τ/m = 0.5 * (r_L × a_L + r_R × a_R)
     const torquePerMass =
@@ -60,8 +61,8 @@ function stepSimRing(
             (cosA * endOffset) * aRight.y - (sinA * endOffset) * aRight.x);
     const alpha = torquePerMass / radiusGyrationSq;
 
-    const linDecay = 1 / (1 + dt * feel.ringLinearDamping);
-    const angDecay = 1 / (1 + dt * feel.ringAngularDamping);
+    const linDecay = 1 / (1 + dt * solved.ringLinearDamping);
+    const angDecay = 1 / (1 + dt * solved.ringAngularDamping);
 
     ring.vx = (ring.vx + ax * dt) * linDecay;
     ring.vy = (ring.vy + ay * dt) * linDecay;

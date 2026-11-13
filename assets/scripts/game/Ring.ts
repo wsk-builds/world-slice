@@ -2,10 +2,10 @@ import {
     _decorator, BoxCollider2D, CircleCollider2D, Component, ERigidBody2DType, Layers, Node, RigidBody2D, Size,
     toRadian, UITransform, Vec2,
 } from 'cc';
-import { FeelConfig } from '../config/FeelConfig';
 import { calcRingPillarGeometry } from '../config/GameConst';
 import { PhysicsGroupBit } from '../config/PhysicsGroups';
 import { TankSpace } from '../config/TankSpace';
+import { SolvedFeelConfig } from '../core/flow/FeelSolver';
 import { getRingKindConfig, RingKindConfig, RingSpec } from '../core/rings/RingKinds';
 
 const { ccclass } = _decorator;
@@ -116,13 +116,13 @@ export class Ring extends Component {
         this.applyConfig();
     }
 
-    /** 同步 FeelConfig 阻尼/摩擦与碰撞体几何尺寸 */
+    /** 同步 FeelSolver 换算后的阻尼/摩擦与碰撞体几何尺寸 */
     applyConfig(): void {
         this.kindConfig = getRingKindConfig(this.spec);
         this.dims = calcRingDimensions(this.spec);
 
-        this.body.linearDamping = FeelConfig.ringLinearDamping;
-        this.body.angularDamping = FeelConfig.ringAngularDamping;
+        this.body.linearDamping = SolvedFeelConfig.ringLinearDamping;
+        this.body.angularDamping = SolvedFeelConfig.ringAngularDamping;
 
         const transform = this.getComponent(UITransform);
         transform?.setContentSize(this.dims.outerDiameter, this.dims.thickness);
@@ -137,8 +137,8 @@ export class Ring extends Component {
 
         this.centerBar.offset = new Vec2(0, 0);
         this.centerBar.size = new Size(this.dims.outerDiameter, this.dims.thickness);
-        this.centerBar.friction = FeelConfig.ringFriction;
-        this.centerBar.restitution = FeelConfig.ringRestitution;
+        this.centerBar.friction = SolvedFeelConfig.ringFriction;
+        this.centerBar.restitution = SolvedFeelConfig.ringRestitution;
         this.centerBar.apply();
     }
 

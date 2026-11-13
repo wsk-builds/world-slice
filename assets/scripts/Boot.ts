@@ -3,6 +3,7 @@ import { GameConst } from './config/GameConst';
 import { calcMachineScale, LayoutConfig } from './config/LayoutConfig';
 import { Palette } from './config/Palette';
 import { applyCollisionMatrix } from './config/PhysicsGroups';
+import { applyFeel, onFeelApplied } from './core/flow/FeelSolver';
 import { FlowField } from './core/flow/FlowField';
 import { Bladder } from './core/input/Bladder';
 import { PhysicsDebugDraw } from './debug/PhysicsDebugDraw';
@@ -22,9 +23,11 @@ const { ccclass } = _decorator;
 @ccclass('Boot')
 export class Boot extends Component {
     private machineNode: Node | null = null;
+    private unsubFeel: (() => void) | null = null;
 
     onLoad(): void {
         applyCollisionMatrix(PhysicsSystem2D.instance.collisionMatrix);
+        applyFeel();
 
         const canvas = this.getComponent(Canvas);
         if (canvas?.cameraComponent) {
@@ -47,14 +50,23 @@ export class Boot extends Component {
         // 内屏节点（原点在机身内屏左下角），位于外壳之下
         const tankRoot = this.createTankRoot(machine);
         tankRoot.addComponent(PhysicsStepper);
-        Tank.create(tankRoot);
+        const tank = Tank.create(tankRoot);
         Bubbles.create(tankRoot, flowField);
-        Pillar.createPair(tankRoot);
+        const [leftPillar, rightPillar] = Pillar.createPair(tankRoot);
         const ringLayer = RingLayer.create(tankRoot);
-        WaterForce.attach(tankRoot, flowField, leftBladder, rightBladder, ringLayer);
+        const waterForce = WaterForce.attach(tankRoot, flowField, leftBladder, rightBladder, ringLayer);
         const ringSpawner = tankRoot.addComponent(RingDebugSpawner);
         ringSpawner.ringLayer = ringLayer;
         tankRoot.addComponent(PhysicsDebugDraw);
+
+        // 体感参数修改后（T010 / T011）实时同步水流、气囊、圈物理属性、双柱与海眼位置
+        this.unsubFeel = onFeelApplied(() => {
+            waterForce.applyConfig();
+            ringLayer.applyConfigToAll();
+            leftPillar.applyLayout(false);
+            rightPillar.applyLayout(true);
+            tank.redraw();
+        });
 
         // 外壳绘制在最上层，内屏位置挖空；左右喷射键挂在外壳之上
         ShellView.create(machine);
@@ -71,6 +83,8 @@ export class Boot extends Component {
     }
 
     onDestroy(): void {
+        this.unsubFeel?.();
+        this.unsubFeel = null;
         view.off('canvas-resize', this.fitMachine, this);
         screen.off('window-resize', this.fitMachine, this);
         this.node.off(Node.EventType.SIZE_CHANGED, this.fitMachine, this);
