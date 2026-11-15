@@ -30,7 +30,7 @@ describe('MatchRule 相邻同款（2/3/4连消）与新槽位重算', () => {
         const entries = [
             makeEntry('r1', { kind: 'normal', color: 'red' }),
             makeEntry('r2', { kind: 'normal', color: 'red' }),
-            makeEntry('b1', { kind: 'normal', color: 'blue' }),
+            makeEntry('g1', { kind: 'normal', color: 'green' }),
         ];
 
         const res = resolvePillarMatch(entries, { baseTopY, pitchScale: pitch });
@@ -40,7 +40,7 @@ describe('MatchRule 相邻同款（2/3/4连消）与新槽位重算', () => {
         expect(res.group?.indices).toEqual([0, 1]);
 
         expect(res.remaining).toHaveLength(1);
-        expect(res.remaining[0].item).toBe('b1');
+        expect(res.remaining[0].item).toBe('g1');
         expect(res.remaining[0].oldIndex).toBe(2);
         expect(res.remaining[0].newIndex).toBe(0);
         expect(res.remaining[0].moved).toBe(true);
@@ -50,10 +50,10 @@ describe('MatchRule 相邻同款（2/3/4连消）与新槽位重算', () => {
         );
     });
 
-    it('中间隔一个其它圈时不消除：红、蓝、红 -> 不消除', () => {
+    it('中间隔一个其它圈时不消除：红、绿、红 -> 不消除', () => {
         const entries = [
             makeEntry('r1', { kind: 'normal', color: 'red' }),
-            makeEntry('b1', { kind: 'normal', color: 'blue' }),
+            makeEntry('g1', { kind: 'normal', color: 'green' }),
             makeEntry('r2', { kind: 'normal', color: 'red' }),
         ];
 
@@ -71,7 +71,7 @@ describe('MatchRule 相邻同款（2/3/4连消）与新槽位重算', () => {
 
     it('三个同种颜色/同大小圈同时相邻时，三个同时消除，上方圈正常下落', () => {
         const entries = [
-            makeEntry('b0', { kind: 'normal', color: 'blue' }),
+            makeEntry('w0', { kind: 'wood' }),
             makeEntry('r1', { kind: 'normal', color: 'red' }),
             makeEntry('r2', { kind: 'normal', color: 'red' }),
             makeEntry('r3', { kind: 'normal', color: 'red' }),
@@ -85,7 +85,7 @@ describe('MatchRule 相邻同款（2/3/4连消）与新槽位重算', () => {
         expect(res.group?.indices).toEqual([1, 2, 3]);
 
         expect(res.remaining).toHaveLength(2);
-        expect(res.remaining[0].item).toBe('b0');
+        expect(res.remaining[0].item).toBe('w0');
         expect(res.remaining[0].moved).toBe(false);
         expect(res.remaining[0].newIndex).toBe(0);
 
@@ -102,17 +102,17 @@ describe('MatchRule 相邻同款（2/3/4连消）与新槽位重算', () => {
     it('四个同种颜色/同大小圈同时相邻时，四个同时消除', () => {
         const entries = [
             makeEntry('g0', { kind: 'normal', color: 'green' }),
-            makeEntry('b1', { kind: 'normal', color: 'blue' }),
-            makeEntry('b2', { kind: 'normal', color: 'blue' }),
-            makeEntry('b3', { kind: 'normal', color: 'blue' }),
-            makeEntry('b4', { kind: 'normal', color: 'blue' }),
+            makeEntry('i1', { kind: 'iron' }),
+            makeEntry('i2', { kind: 'iron' }),
+            makeEntry('i3', { kind: 'iron' }),
+            makeEntry('i4', { kind: 'iron' }),
             makeEntry('r5', { kind: 'normal', color: 'red' }),
         ];
 
         const res = resolvePillarMatch(entries, { baseTopY, pitchScale: pitch });
         expect(res.matched).toBe(true);
         expect(res.group?.count).toBe(4);
-        expect(res.group?.entries.map((e) => e.item)).toEqual(['b1', 'b2', 'b3', 'b4']);
+        expect(res.group?.entries.map((e) => e.item)).toEqual(['i1', 'i2', 'i3', 'i4']);
         expect(res.group?.indices).toEqual([1, 2, 3, 4]);
 
         expect(res.remaining.map((r) => r.item)).toEqual(['g0', 'r5']);
@@ -125,14 +125,14 @@ describe('MatchRule 相邻同款（2/3/4连消）与新槽位重算', () => {
         // 隔开的小金环不消除
         expect(
             resolvePillarMatch(
-                [makeEntry('g1', { kind: 'gold' }), makeEntry('b1', { kind: 'normal', color: 'blue' }), makeEntry('g2', { kind: 'gold' })],
+                [makeEntry('g1', { kind: 'gold' }), makeEntry('n1', { kind: 'normal', color: 'green' }), makeEntry('g2', { kind: 'gold' })],
                 { baseTopY },
             ).matched,
         ).toBe(false);
 
         // 相邻小金环、相邻铁圈、相邻木圈各自消除
         const goldRes = resolvePillarMatch(
-            [makeEntry('b1', { kind: 'normal', color: 'blue' }), makeEntry('g1', { kind: 'gold' }), makeEntry('g2', { kind: 'gold' })],
+            [makeEntry('n1', { kind: 'normal', color: 'green' }), makeEntry('g1', { kind: 'gold' }), makeEntry('g2', { kind: 'gold' })],
             { baseTopY },
         );
         expect(goldRes.matched).toBe(true);
@@ -164,7 +164,7 @@ describe('MatchRule 相邻同款（2/3/4连消）与新槽位重算', () => {
         const entries = [
             makeEntry('r0', { kind: 'normal', color: 'red' }),
             makeEntry('r1', { kind: 'normal', color: 'red' }),
-            makeEntry('b2', { kind: 'normal', color: 'blue' }),
+            makeEntry('w2', { kind: 'wood' }),
             makeEntry('g3', { kind: 'normal', color: 'green' }),
             makeEntry('g4', { kind: 'normal', color: 'green' }),
         ];
@@ -172,7 +172,7 @@ describe('MatchRule 相邻同款（2/3/4连消）与新槽位重算', () => {
         const res = resolvePillarMatch(entries, { baseTopY, preferredIndex: 4 });
         expect(res.matched).toBe(true);
         expect(res.group?.indices).toEqual([3, 4]);
-        expect(res.remaining.map((r) => r.item)).toEqual(['r0', 'r1', 'b2']);
+        expect(res.remaining.map((r) => r.item)).toEqual(['r0', 'r1', 'w2']);
     });
 
     it('平滑下落耗时与插值函数满足边界限制与单调递减', () => {
@@ -210,7 +210,7 @@ describe('MatchRule 相邻同款（2/3/4连消）与新槽位重算', () => {
         const geom = calcRingPillarGeometry(TankSpace.width);
         const thick = geom.ringThickness;
         const redSpec: RingSpec = { kind: 'normal', color: 'red' };
-        const blueSpec: RingSpec = { kind: 'normal', color: 'blue' };
+        const greenSpec: RingSpec = { kind: 'normal', color: 'green' };
 
         const locked2: PillarRingCandidate[] = [
             { spec: redSpec, thickness: thick, y: 244, lockedIndex: 0 },
@@ -234,26 +234,26 @@ describe('MatchRule 相邻同款（2/3/4连消）与新槽位重算', () => {
             ),
         ).toBe(true);
 
-        // 3. 中间隔着异色蓝圈，上方才是红圈 -> 不暂缓，下方两红照常消
+        // 3. 中间隔着异色绿圈，上方才是红圈 -> 不暂缓，下方两红照常消
         expect(
             shouldDeferPillarMatch(
                 locked2,
                 [
-                    { spec: blueSpec, thickness: thick, y: 276, lockedIndex: -1 },
+                    { spec: greenSpec, thickness: thick, y: 276, lockedIndex: -1 },
                     { spec: redSpec, thickness: thick, y: 292, lockedIndex: -1 },
                 ],
                 [0, 1],
             ),
         ).toBe(false);
 
-        // 4. 异色未锁定圈物理夹在两红中间 -> 暂缓，等蓝圈先落定排序避免跨圈误消
+        // 4. 异色未锁定圈物理夹在两红中间 -> 暂缓，等绿圈先落定排序避免跨圈误消
         expect(
             shouldDeferPillarMatch(
                 [
                     { spec: redSpec, thickness: thick, y: 244, lockedIndex: 0 },
                     { spec: redSpec, thickness: thick, y: 276, lockedIndex: 1 },
                 ],
-                [{ spec: blueSpec, thickness: thick, y: 260, lockedIndex: -1 }],
+                [{ spec: greenSpec, thickness: thick, y: 260, lockedIndex: -1 }],
                 [0, 1],
             ),
         ).toBe(true);

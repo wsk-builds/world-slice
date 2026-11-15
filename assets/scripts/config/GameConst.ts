@@ -214,6 +214,7 @@ export const GameConst = {
     calmSeaTopMarginPx: 26,
     calmSeaWarmFlowSpeed: 135,
     calmSeaWarmFlowTaperSpanPx: 65,
+    calmSeaPillarCorridorHalfWidthPx: 46,
     calmSeaTurbulenceScale: 0.06,
     calmSeaCirculationScale: 0.08,
     calmSeaRiseMaxSpeedPx: 145,

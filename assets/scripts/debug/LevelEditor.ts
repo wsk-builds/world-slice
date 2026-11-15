@@ -73,7 +73,7 @@ function resolveSpecSwatchColor(spec: RingSpec): Color {
  * - 入口在 TuningPanel「摆关」按钮，开启时自动收起调参大面板并暂停物理/喷射/敲玻璃，不弹全屏暂停遮罩；
  * - 工具条精巧布置在左右握把区，100% 避开内屏（1060×606），内屏全区域无遮挡拖拽；
  * - 点击选中圈并实时拖动更新 `ring.body3D`（z=0、清零线/角速度、重置水平姿态并实时同步 3D 网格）；
- * - 支持增删圈（上限 12）、切换 7 种圈种与颜色（普通 4 色 + 金/铁/木）、调整倒计时与导出校验合格的 LevelData JSON；
+ * - 支持增删圈（上限 12）、切换 5 种圈种与颜色（红/绿 + 金/铁/木）、调整倒计时与导出校验合格的 LevelData JSON；
  * - 整个组件共用唯一 1 个 Graphics 组件；对外提供 `registerDraggable` 接口供后续机关与角色复用。
  */
 @ccclass('LevelEditor')
@@ -328,7 +328,7 @@ export class LevelEditor extends Component {
             Label.HorizontalAlign.CENTER,
         );
 
-        // 7 种圈按钮（2 列 × 4 行）
+        // 5 种圈按钮（2 列 × 3 行）
         const btnW = 108;
         const btnH = 42;
         const gapX = 12;

@@ -322,8 +322,8 @@ function cloneLevelMetadata(level: LevelData): LevelData {
         ...(level.classifyColors
             ? {
                   classifyColors: {
-                      left: [level.classifyColors.left[0], level.classifyColors.left[1]],
-                      right: [level.classifyColors.right[0], level.classifyColors.right[1]],
+                      left: [...level.classifyColors.left],
+                      right: [...level.classifyColors.right],
                   },
               }
             : {}),

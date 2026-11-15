@@ -10,6 +10,7 @@ export interface CalmSeaFlowConfig {
     topMarginPx: number;
     warmFlowSpeed: number;
     warmFlowTaperSpanPx: number;
+    pillarCorridorHalfWidthPx: number;
     turbulenceScale: number;
     circulationScale: number;
     riseMaxSpeedPx: number;
@@ -47,6 +48,10 @@ export function buildCalmSeaFlowConfig(
         topMarginPx: Math.max(8, overrides.topMarginPx ?? GameConst.calmSeaTopMarginPx),
         warmFlowSpeed: Math.max(0, overrides.warmFlowSpeed ?? GameConst.calmSeaWarmFlowSpeed),
         warmFlowTaperSpanPx: Math.max(10, overrides.warmFlowTaperSpanPx ?? GameConst.calmSeaWarmFlowTaperSpanPx),
+        pillarCorridorHalfWidthPx: Math.max(
+            0,
+            overrides.pillarCorridorHalfWidthPx ?? GameConst.calmSeaPillarCorridorHalfWidthPx,
+        ),
         turbulenceScale: clamp01(overrides.turbulenceScale ?? GameConst.calmSeaTurbulenceScale),
         circulationScale: clamp01(overrides.circulationScale ?? GameConst.calmSeaCirculationScale),
         riseMaxSpeedPx: Math.max(20, overrides.riseMaxSpeedPx ?? GameConst.calmSeaRiseMaxSpeedPx),
@@ -107,6 +112,7 @@ export class CalmSeaFlowTerm implements FlowTermObject {
     private targetYValue = TankSpace.height * 0.6;
     private tankHeightValue = TankSpace.height;
     private elapsedSec = 0;
+    private readonly pillarCorridors: Array<{ x: number; cutoffY: number }> = [];
 
     constructor(overrides: Partial<CalmSeaFlowConfig> = {}) {
         this.config = buildCalmSeaFlowConfig(overrides);
@@ -129,8 +135,26 @@ export class CalmSeaFlowTerm implements FlowTermObject {
         this.tankHeightValue = Math.max(100, tankHeight);
     }
 
-    activate(targetY: number, tankHeight: number = TankSpace.height): void {
+    /** 设置双柱位置与底面高度：柱下方区域保留升力，柱及正上方垂直区域不产生向上暖流 */
+    setPillars(pillars: readonly Pick<CalmSeaPillarInfo, 'x' | 'baseTopY'>[]): void {
+        this.pillarCorridors.length = 0;
+        for (let i = 0; i < pillars.length; i++) {
+            const p = pillars[i];
+            if (Number.isFinite(p.x) && Number.isFinite(p.baseTopY)) {
+                this.pillarCorridors.push({ x: p.x, cutoffY: p.baseTopY - 4 });
+            }
+        }
+    }
+
+    activate(
+        targetY: number,
+        tankHeight: number = TankSpace.height,
+        pillars?: readonly Pick<CalmSeaPillarInfo, 'x' | 'baseTopY'>[],
+    ): void {
         this.setTargetY(targetY, tankHeight);
+        if (pillars) {
+            this.setPillars(pillars);
+        }
         this.active = true;
         this.elapsedSec = 0;
     }
@@ -147,7 +171,7 @@ export class CalmSeaFlowTerm implements FlowTermObject {
         this.elapsedSec += dt;
     }
 
-    sample(_x: number, y: number, out: FlowVec2): void {
+    sample(x: number, y: number, out: FlowVec2): void {
         if (!this.active || y < 0 || y >= this.tankHeightValue) {
             out.x = 0;
             out.y = 0;
@@ -164,6 +188,37 @@ export class CalmSeaFlowTerm implements FlowTermObject {
         } else if (y > fadeStart) {
             const t = (y - fadeStart) / Math.max(1e-4, fadeEnd - fadeStart);
             weight = 1 - t * t * (3 - 2 * t);
+        }
+
+        const corridorInner = this.config.pillarCorridorHalfWidthPx;
+        if (corridorInner > 0 && this.pillarCorridors.length > 0 && weight > 0) {
+            const corridorOuter = corridorInner + 12;
+            for (let i = 0; i < this.pillarCorridors.length; i++) {
+                const c = this.pillarCorridors[i];
+                // 柱下方区域保留完整托举暖流，仅对柱身及正上方区域关闭向上暖流
+                const yFadeStart = c.cutoffY - 10;
+                if (y <= yFadeStart) {
+                    continue;
+                }
+                const distX = Math.abs(x - c.x);
+                if (distX >= corridorOuter) {
+                    continue;
+                }
+                let xMask = 0;
+                if (distX > corridorInner) {
+                    const u = (distX - corridorInner) / (corridorOuter - corridorInner);
+                    xMask = u * u * (3 - 2 * u);
+                }
+                let yKeep = 0;
+                if (y < c.cutoffY) {
+                    const v = (c.cutoffY - y) / 10;
+                    yKeep = v * v * (3 - 2 * v);
+                }
+                const factor = xMask + (1 - xMask) * yKeep;
+                if (factor < weight) {
+                    weight = factor;
+                }
+            }
         }
 
         out.x = 0;
@@ -211,9 +266,13 @@ export class CalmSeaRingRegulator {
         }
 
         let isThreadingPillar = false;
+        let isInUpperPillarCorridor = false;
         let isOverUnfullPillar = false;
         let isAlignedAboveUnfullPillar = false;
         let detourDirX = 0;
+        let blockedUnderTail = false;
+        const corridorHalfW = Math.max(this.config.pillarCorridorHalfWidthPx, body.outerRadius * 1.05);
+        const detourLimit = Math.max(corridorHalfW + 10, body.outerRadius * 1.2);
 
         for (let i = 0; i < pillars.length; i++) {
             const p = pillars[i];
@@ -221,6 +280,10 @@ export class CalmSeaRingRegulator {
             const dx = body.x - p.x;
             const dz = body.z - pz;
             const distXZ = Math.hypot(dx, dz);
+
+            if (Math.abs(dx) <= corridorHalfW && body.y >= p.baseTopY - 4) {
+                isInUpperPillarCorridor = true;
+            }
 
             if (!p.isFull) {
                 if (distXZ < body.outerRadius * 0.95 && body.y >= p.baseTopY - 4) {
@@ -238,20 +301,23 @@ export class CalmSeaRingRegulator {
                 }
             }
 
-            if (body.y < p.baseTopY - 4 && distXZ < body.outerRadius * 0.85 && detourDirX === 0) {
+            if (body.y < p.baseTopY - 4 && distXZ < detourLimit && detourDirX === 0) {
                 if (Math.abs(dx) > 2) {
                     detourDirX = dx > 0 ? 1 : -1;
                 } else {
                     detourDirX = body.x < tankWidth * 0.5 ? 1 : -1;
+                }
+                if (body.y >= p.baseTopY - 64 && distXZ < body.outerRadius * 0.92) {
+                    blockedUnderTail = true;
                 }
             }
         }
 
         const sinkAccel = solvedFeel.baseSinkAccel * kindConfig.sinkScale;
 
-        if (isThreadingPillar) {
-            // 已套入柱杆准备落定：仅略减沉以便轻柔落稳锁定，绝不逆向顶出柱尖
-            body.applyCentralForce(0, body.mass * sinkAccel * 0.45, 0);
+        if (isThreadingPillar || isInUpperPillarCorridor) {
+            // 两柱柱身及正上方垂直区域不施加向上抬升力，让推入柱区或套入柱杆的圈顺畅自然下沉入柱
+            this.reachedBandByBodyId.delete(body.id);
         } else {
             let reached = this.reachedBandByBodyId.get(body.id) === true;
             if (!reached && body.y >= targetY) {
@@ -268,20 +334,29 @@ export class CalmSeaRingRegulator {
 
             let controlAy = 0;
             if (!reached) {
-                const distBelow = Math.max(0, targetY - body.y);
-                const vTarget = clampRange(
-                    distBelow * this.config.riseSlope,
-                    this.config.riseMinSpeedPx,
-                    this.config.riseMaxSpeedPx,
-                );
-                if (body.vy < vTarget) {
-                    controlAy = Math.min(
-                        this.config.maxRiseAccelPx,
-                        this.config.riseGain * (vTarget - body.vy),
+                if (blockedUnderTail) {
+                    // 贴近柱尾下方时先柔和横向滑出柱底卡托外侧，避免直接向上顶穿尾椎卡住
+                    const effWaterRate = solvedFeel.flowFollowRate * kindConfig.flowFollow;
+                    const targetVy = -28;
+                    controlAy =
+                        this.config.bandTrackRate * (targetVy - body.vy) -
+                        effWaterRate * warmFlowVy;
+                } else {
+                    const distBelow = Math.max(0, targetY - body.y);
+                    const vTarget = clampRange(
+                        distBelow * this.config.riseSlope,
+                        this.config.riseMinSpeedPx,
+                        this.config.riseMaxSpeedPx,
                     );
-                } else if (body.y > targetY - 28) {
-                    const damp = this.config.overshootDampRate * (vTarget - body.vy);
-                    controlAy = Math.max(-sinkAccel * this.config.maxBrakeDownRatio, damp);
+                    if (body.vy < vTarget) {
+                        controlAy = Math.min(
+                            this.config.maxRiseAccelPx,
+                            this.config.riseGain * (vTarget - body.vy),
+                        );
+                    } else if (body.y > targetY - 28) {
+                        const damp = this.config.overshootDampRate * (vTarget - body.vy);
+                        controlAy = Math.max(-sinkAccel * this.config.maxBrakeDownRatio, damp);
+                    }
                 }
             } else {
                 const targetSinkVy =
@@ -305,8 +380,9 @@ export class CalmSeaRingRegulator {
                 controlAy = trackAy;
             }
 
+            const detourScale = blockedUnderTail ? 2.2 : 1.0;
             body.applyCentralForce(
-                detourDirX !== 0 ? body.mass * detourDirX * this.config.pillarDetourAccelPx : 0,
+                detourDirX !== 0 ? body.mass * detourDirX * this.config.pillarDetourAccelPx * detourScale : 0,
                 body.mass * (sinkAccel + controlAy),
                 0,
             );

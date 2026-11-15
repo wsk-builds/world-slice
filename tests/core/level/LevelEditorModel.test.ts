@@ -112,9 +112,9 @@ describe('LevelEditorModel 拖拽摆关器纯逻辑', () => {
         const added = model.addRing({ kind: 'wood' });
         expect(added.ok).toBe(true);
         expect(model.ringCount).toBe(12);
-        // X03 原有 red/green/blue/gold/iron 5 种，再加 wood 变为 6 种，应提示校验失败且阻止导出
-        expect(added.validation.valid).toBe(false);
-        expect(model.exportJson().ok).toBe(false);
+        // X03 本身含全部 5 种圈，合法导出
+        expect(added.validation.valid).toBe(true);
+        expect(model.exportJson().ok).toBe(true);
 
         const geom = calcRingPillarGeometry(TankSpace.width);
         const leftPillar = new PillarCollider3D(
@@ -132,7 +132,7 @@ describe('LevelEditorModel 拖拽摆关器纯逻辑', () => {
         expect(overlapsPillar2D(addedPos.x, addedPos.y, addedR, leftPillar, 4)).toBe(false);
         expect(overlapsPillar2D(addedPos.x, addedPos.y, addedR, rightPillar, 4)).toBe(false);
 
-        // 改回已有圈种（如 normal red），恢复 5 种并通过校验可导出
+        // 切换为 normal red 仍可通过校验导出
         const fixed = model.setRingSpec(added.ring!.id, { kind: 'normal', color: 'red' });
         expect(fixed.ok).toBe(true);
         expect(fixed.validation.valid).toBe(true);
@@ -143,7 +143,7 @@ describe('LevelEditorModel 拖拽摆关器纯逻辑', () => {
         model.setRingPositionByTankPx(added.ring!.id, edgeGold.x, edgeGold.y);
         model.setRingSpec(added.ring!.id, { kind: 'gold' });
         const goldX = model.getRingTankPos(added.ring!).x;
-        model.setRingSpec(added.ring!.id, { kind: 'normal', color: 'orange' });
+        model.setRingSpec(added.ring!.id, { kind: 'normal', color: 'green' });
         const normalX = model.getRingTankPos(added.ring!).x;
         expect(normalX).toBeGreaterThanOrEqual(goldX);
     });

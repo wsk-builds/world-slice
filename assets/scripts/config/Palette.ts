@@ -86,12 +86,10 @@ export const Palette = {
     calmSeaWarmOuter: hex('#F7C97E', 0.56),
     calmSeaWarmInner: hex('#FFF1C4', 0.78),
 
-    /** 灰盒七种锁脉环配色 */
+    /** 灰盒五种锁脉环配色 */
     ring: {
         red: hex('#EE5253'),
         green: hex('#2ED573'),
-        blue: hex('#1E90FF'),
-        orange: hex('#FFA502'),
         gold: hex('#FFD32A'),
         goldAccent: hex('#FFF3B0'),
         iron: hex('#57606F'),

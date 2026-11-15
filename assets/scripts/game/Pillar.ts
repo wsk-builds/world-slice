@@ -294,7 +294,7 @@ export class Pillar extends Component {
             return TICK_STATE_DISABLED;
         }
         if (this.energySkillActive) {
-            return TICK_STATE_SKILL;
+            return index < this.energyLitTicks ? TICK_STATE_SKILL : TICK_STATE_OFF;
         }
         return index < this.energyLitTicks ? TICK_STATE_LIT : TICK_STATE_OFF;
     }

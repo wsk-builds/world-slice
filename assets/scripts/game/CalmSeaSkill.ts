@@ -260,6 +260,7 @@ export class CalmSeaSkill extends Component {
         );
         this.currentTargetY = targetY;
         this.warmTerm.setTargetY(targetY, TankSpace.height);
+        this.warmTerm.setPillars(activePillars);
         return count;
     }
 
@@ -271,8 +272,11 @@ export class CalmSeaSkill extends Component {
             return;
         }
 
+        const wasActive = this.active;
         this.active = true;
-        this.regulator.reset();
+        if (!wasActive) {
+            this.regulator.reset();
+        }
         this.syncPillarTargets();
         this.warmTerm.activate(this.currentTargetY, TankSpace.height);
 
@@ -380,16 +384,26 @@ export class CalmSeaSkill extends Component {
             gfx.stroke();
         }
 
-        // 2. 缸底升向柱尖目标带的柔和竖向暖流丝线
+        // 2. 缸底升向柱尖目标带的柔和竖向暖流丝线（全底宽均升起，柱区仅止步于柱底以下避免遮挡柱上/柱顶空间）
         const streamCount = Math.max(2, GameConst.calmSeaStreamCount);
         const streamLeft = GameConst.tankCornerRadius * 0.85;
         const streamRight = TankSpace.width - GameConst.tankCornerRadius * 0.85;
         const streamSpanX = Math.max(100, streamRight - streamLeft);
 
         gfx.lineWidth = 1.7;
+        const corridorHalfW = this.warmTerm.config.pillarCorridorHalfWidthPx;
         for (let i = 0; i < streamCount; i++) {
             const uStream = (i + 0.5) / streamCount;
             const baseX = streamLeft + uStream * streamSpanX;
+            let localMaxY = maxDrawY;
+            if (this.leftPillar && Math.abs(baseX - this.leftPillar.node.position.x) <= corridorHalfW) {
+                localMaxY = Math.min(localMaxY, Math.max(minDrawY + 40, this.leftPillar.baseTopY - 12));
+            }
+            if (this.rightPillar && Math.abs(baseX - this.rightPillar.node.position.x) <= corridorHalfW) {
+                localMaxY = Math.min(localMaxY, Math.max(minDrawY + 40, this.rightPillar.baseTopY - 12));
+            }
+            const localSpanY = Math.max(40, localMaxY - minDrawY);
+
             const cycle = (this.animTime * 0.34 + i * 0.19) % 1;
             const segStart = Math.max(0, cycle - 0.38);
             const segEnd = Math.min(1, cycle + 0.04);
@@ -404,7 +418,7 @@ export class CalmSeaSkill extends Component {
 
             for (let s = 0; s <= STREAM_SEGMENTS; s++) {
                 const t = segStart + ((segEnd - segStart) * s) / STREAM_SEGMENTS;
-                const y = clampTankY(minDrawY + t * spanY);
+                const y = clampTankY(minDrawY + t * localSpanY);
                 const sway = Math.sin(t * Math.PI * 3.2 - this.animTime * 3.4 + i * 1.7) * 11;
                 const x = clampTankXAtY(baseX + sway, y);
                 if (s === 0) {

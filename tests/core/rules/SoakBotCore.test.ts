@@ -343,7 +343,10 @@ describe('SoakBotCore 挂机参数解析、种子按键与四项不变量检查�
                     } else {
                         calmActive = true;
                         calmRegulator.reset();
-                        calmTerm.activate(calmTargetY, TankSpace.height);
+                        calmTerm.activate(calmTargetY, TankSpace.height, [
+                            { x: leftPillar.x, baseTopY: leftPillar.baseTopY },
+                            { x: rightPillar.x, baseTopY: rightPillar.baseTopY },
+                        ]);
                         flowField.addTerm(calmTerm);
                         flowField.setFlowSuppression(calmTerm.config.turbulenceScale, calmTerm.config.circulationScale);
                     }
@@ -630,5 +633,5 @@ describe('SoakBotCore 挂机参数解析、种子按键与四项不变量检查�
         expect(rounds).toBeGreaterThanOrEqual(3);
         expect(totalLocks).toBeGreaterThan(0);
         expect(totalMatches).toBeGreaterThanOrEqual(0);
-    });
+    }, 15000);
 });

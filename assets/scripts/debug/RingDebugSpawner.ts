@@ -12,7 +12,7 @@ const tempVec3 = new Vec3();
 /**
  * 灰盒调试放圈组件（受 GameConst.DEBUG 控制）：
  * - 按住 Shift 再点击内屏在点击处放一个当前选中的圈（普通点击归敲玻璃 GlassTap）
- * - 数字键 1–7 切换圈种（1红 2绿 3蓝 4橙 5小金环 6铁圈 7木圈）
+ * - 数字键 1–5 切换圈种（1红 2绿 3小金环 4铁圈 5木圈）
  * - R 键清空所有圈
  */
 @ccclass('RingDebugSpawner')
@@ -123,11 +123,14 @@ export class RingDebugSpawner extends Component {
     };
 
     private keyCodeToSlot(code: KeyCode): number {
-        if (code >= KeyCode.DIGIT_1 && code <= KeyCode.DIGIT_7) {
-            return code - KeyCode.DIGIT_1;
+        const maxSlot = DEBUG_RING_SLOTS.length - 1;
+        if (code >= KeyCode.DIGIT_1 && code <= KeyCode.DIGIT_9) {
+            const idx = code - KeyCode.DIGIT_1;
+            return idx <= maxSlot ? idx : -1;
         }
-        if (code >= KeyCode.NUM_1 && code <= KeyCode.NUM_7) {
-            return code - KeyCode.NUM_1;
+        if (code >= KeyCode.NUM_1 && code <= KeyCode.NUM_9) {
+            const idx = code - KeyCode.NUM_1;
+            return idx <= maxSlot ? idx : -1;
         }
         return -1;
     }

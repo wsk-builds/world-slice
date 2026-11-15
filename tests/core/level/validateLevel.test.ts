@@ -22,8 +22,8 @@ function makeBaseLevel(overrides?: Partial<LevelData>): LevelData {
             { kind: 'normal', color: 'red', pos: 'random' },
             { kind: 'normal', color: 'green', pos: 'random' },
             { kind: 'normal', color: 'green', pos: 'random' },
-            { kind: 'normal', color: 'blue', pos: 'random' },
-            { kind: 'normal', color: 'blue', pos: 'random' },
+            { kind: 'wood', pos: 'random' },
+            { kind: 'wood', pos: 'random' },
         ],
         mechanisms: [],
         actors: [],
@@ -58,7 +58,7 @@ describe('validateLevel 关卡数据校验', () => {
         const maxAllowed = GameConst.pillarCapacity * 2;
         const exact12 = Array.from({ length: maxAllowed }, (_, i) => ({
             kind: 'normal' as const,
-            color: (['red', 'green', 'blue'] as const)[i % 3],
+            color: (['red', 'green'] as const)[i % 2],
             pos: 'random' as const,
         }));
         expect(validateLevel(makeBaseLevel({ rings: exact12 })).valid).toBe(true);
@@ -69,12 +69,12 @@ describe('validateLevel 关卡数据校验', () => {
         expect(overRes.errors.some((e) => e.includes('12'))).toBe(true);
     });
 
-    it('同时出现的圈种超过 5 种时拒绝，正好 5 种允许通过', () => {
+    it('正好 5 种允许通过，且已移除的蓝/橙颜色应被拒绝', () => {
         const fiveSpecies = makeBaseLevel({
             rings: [
                 { kind: 'normal', color: 'red', pos: 'random' },
                 { kind: 'normal', color: 'green', pos: 'random' },
-                { kind: 'normal', color: 'blue', pos: 'random' },
+                { kind: 'wood', pos: 'random' },
                 { kind: 'gold', pos: 'random' },
                 { kind: 'iron', pos: 'random' },
                 { kind: 'iron', pos: 'random' },
@@ -82,19 +82,15 @@ describe('validateLevel 关卡数据校验', () => {
         });
         expect(validateLevel(fiveSpecies).valid).toBe(true);
 
-        const sixSpecies = makeBaseLevel({
+        const removedColors = makeBaseLevel({
             rings: [
-                { kind: 'normal', color: 'red', pos: 'random' },
-                { kind: 'normal', color: 'green', pos: 'random' },
-                { kind: 'normal', color: 'blue', pos: 'random' },
-                { kind: 'normal', color: 'orange', pos: 'random' },
-                { kind: 'gold', pos: 'random' },
-                { kind: 'iron', pos: 'random' },
+                { kind: 'normal', color: 'blue' as LevelData['rings'][number]['color'], pos: 'random' },
+                { kind: 'normal', color: 'orange' as LevelData['rings'][number]['color'], pos: 'random' },
             ],
         });
-        const sixRes = validateLevel(sixSpecies);
-        expect(sixRes.valid).toBe(false);
-        expect(sixRes.errors.some((e) => e.includes('5'))).toBe(true);
+        const removedRes = validateLevel(removedColors);
+        expect(removedRes.valid).toBe(false);
+        expect(removedRes.errors.length).toBeGreaterThanOrEqual(2);
     });
 
     it('校验圈颜色、百分比范围、时间、类型与种子合法性', () => {

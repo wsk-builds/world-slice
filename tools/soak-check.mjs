@@ -236,7 +236,7 @@ function main() {
                 stats.calmSeaTriggers++;
                 calmActive = true;
                 calmRegulator.reset();
-                calmTerm.activate(calmTargetY, TankSpace.height);
+                calmTerm.activate(calmTargetY, TankSpace.height, calmPillarsInfo);
                 flowField.addTerm(calmTerm);
                 flowField.setFlowSuppression(calmTerm.config.turbulenceScale, calmTerm.config.circulationScale);
             }

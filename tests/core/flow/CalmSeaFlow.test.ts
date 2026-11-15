@@ -62,12 +62,25 @@ describe('CalmSeaFlow 右柱技能「定海」暖流托浮、平息乱流与 3D 
         term.sample(300, 120, out);
         expect(out).toEqual({ x: 0, y: 0 });
 
-        term.activate(targetY, TankSpace.height);
-        term.sample(300, 40, out);
+        term.activate(targetY, TankSpace.height, pillarsInfo);
+        term.sample(500, 40, out);
         expect(out.x).toBe(0);
         expect(out.y).toBeCloseTo(term.config.warmFlowSpeed, 6);
 
-        // 柱尖高度以下依然有明确向上的暖流，目标带上方衰减归零
+        // 两柱下方区域保留向上的暖流托举力
+        term.sample(leftPillarX, 40, out);
+        expect(out.x).toBe(0);
+        expect(out.y).toBeCloseTo(term.config.warmFlowSpeed, 6);
+        term.sample(rightPillarX, rightCollider.tailBottomY - 20, out);
+        expect(out.y).toBeCloseTo(term.config.warmFlowSpeed, 6);
+
+        // 两柱柱身及正上方区域不产生向上抬升暖流
+        term.sample(rightPillarX, rightCollider.tipY - 20, out);
+        expect(out).toEqual({ x: 0, y: 0 });
+        term.sample(rightPillarX, targetY - 10, out);
+        expect(out).toEqual({ x: 0, y: 0 });
+
+        // 柱区之外、柱尖高度以下依然有明确向上的暖流，目标带上方衰减归零
         term.sample(500, rightCollider.tipY - 40, out);
         expect(out.y).toBeGreaterThan(term.config.warmFlowSpeed * 0.5);
 
@@ -106,7 +119,7 @@ describe('CalmSeaFlow 右柱技能「定海」暖流托浮、平息乱流与 3D 
         // 激活「定海」压制 + 挂载暖流项
         const term = new CalmSeaFlowTerm();
         const targetY = computeCalmSeaTargetY(pillarsInfo, outerR, TankSpace.height);
-        term.activate(targetY, TankSpace.height);
+        term.activate(targetY, TankSpace.height, pillarsInfo);
         field.addTerm(term);
         field.setFlowSuppression(cfg.turbulenceScale, cfg.circulationScale);
 
@@ -185,7 +198,7 @@ describe('CalmSeaFlow 右柱技能「定海」暖流托浮、平息乱流与 3D 
             if (e.side === 'right') {
                 skillActive = true;
                 regulator.reset();
-                term.activate(targetY, TankSpace.height);
+                term.activate(targetY, TankSpace.height, pillarsInfo);
                 field.addTerm(term);
                 field.setFlowSuppression(term.config.turbulenceScale, term.config.circulationScale);
             }
@@ -356,10 +369,21 @@ describe('CalmSeaFlow 右柱技能「定海」暖流托浮、平息乱流与 3D 
         }
     });
 
-    it('直接压在柱尾正下方的沉底铁圈能柔和绕过柱底十字卡托并浮升至柱尖上方', () => {
-        const res = runCalmSeaTrajectory('iron', rightPillarX, 14);
-        expect(res.maxY).toBeGreaterThan(rightCollider.tipY + 15);
-        expect(res.endOfSkillY).toBeGreaterThan(rightCollider.tipY);
+    it('柱正上方无向上抬升力（推入柱区顺畅落柱），而柱下方区域保留托举力并柔和绕过柱底浮升至柱尖上方', () => {
+        // 1. 原本浮在目标带高度、进入右柱正上方区域后无抬升力，顺畅落入右柱
+        const aboveRes = runCalmSeaTrajectory('normal', rightPillarX, rightCollider.tipY + 32);
+        expect(aboveRes.endOfSkillY).toBeLessThan(rightCollider.tipY);
+        expect(aboveRes.endOfSkillY).toBeGreaterThan(rightCollider.baseTopY - 4);
+
+        // 2. 压在柱尾正下方的沉底铁圈仍受柱下托举力，柔和绕过柱底十字卡托并浮升至柱尖上方
+        const underRes = runCalmSeaTrajectory('iron', rightPillarX, 14);
+        expect(underRes.maxY).toBeGreaterThan(rightCollider.tipY + 15);
+        expect(underRes.endOfSkillY).toBeGreaterThan(rightCollider.tipY);
+
+        // 3. 接近柱尾下方（y=175）的铁圈同样能滑出柱底并升至柱尖上方，不会卡在卡托底面
+        const nearTailRes = runCalmSeaTrajectory('iron', rightPillarX + 8, 175);
+        expect(nearTailRes.maxY).toBeGreaterThan(rightCollider.tipY + 15);
+        expect(nearTailRes.endOfSkillY).toBeGreaterThan(rightCollider.tipY);
     });
 
     it('大倾角（~75°）与大幅 z 偏离（+42px）的圈在「定海」期间恢复水平正放并居中至 z=0', () => {
@@ -396,7 +420,7 @@ describe('CalmSeaFlow 右柱技能「定海」暖流托浮、平息乱流与 3D 
         const kindCfg = getRingKindConfig('normal');
         const targetY = computeCalmSeaTargetY(pillarsInfo, outerR, TankSpace.height, term.config);
 
-        term.activate(targetY, TankSpace.height);
+        term.activate(targetY, TankSpace.height, pillarsInfo);
         field.addTerm(term);
         field.setFlowSuppression(term.config.turbulenceScale, term.config.circulationScale);
 
@@ -467,7 +491,7 @@ describe('CalmSeaFlow 右柱技能「定海」暖流托浮、平息乱流与 3D 
             } else {
                 rightActive = true;
                 regulator.reset();
-                calmTerm.activate(targetY, TankSpace.height);
+                calmTerm.activate(targetY, TankSpace.height, pillarsInfo);
                 field.addTerm(calmTerm);
                 field.setFlowSuppression(calmTerm.config.turbulenceScale, calmTerm.config.circulationScale);
             }
@@ -601,5 +625,68 @@ describe('CalmSeaFlow 右柱技能「定海」暖流托浮、平息乱流与 3D 
             energy.step(1 / 60);
         }
         expect(leftActive).toBe(false);
+    });
+
+    it('定海持续期间第 2 秒再次充满时，重叠续期延长至 7 秒（第 5 秒不提前中断，流场与压制稳定保持至第 7 秒才恢复）', () => {
+        const field = new FlowField({ seed: 404 }, DEFAULT_FEEL_CONFIG);
+        const energy = new PillarEnergy();
+        const calmTerm = new CalmSeaFlowTerm();
+        const regulator = new CalmSeaRingRegulator();
+        const targetY = computeCalmSeaTargetY(pillarsInfo, outerR, TankSpace.height, calmTerm.config);
+
+        let rightActive = false;
+        let triggerCount = 0;
+
+        energy.onSkillTrigger((e) => {
+            if (e.side !== 'right') return;
+            triggerCount++;
+            const wasActive = rightActive;
+            rightActive = true;
+            if (!wasActive) {
+                regulator.reset();
+            }
+            calmTerm.activate(targetY, TankSpace.height, pillarsInfo);
+            field.addTerm(calmTerm);
+            field.setFlowSuppression(calmTerm.config.turbulenceScale, calmTerm.config.circulationScale);
+        });
+        energy.onChange((snap) => {
+            if (snap.side === 'right' && !snap.skillActive && rightActive) {
+                rightActive = false;
+                calmTerm.deactivate();
+                field.removeTerm(calmTerm);
+                field.clearFlowSuppression();
+                regulator.reset();
+            }
+        });
+
+        energy.addEnergy('right', 100);
+        expect(rightActive).toBe(true);
+        expect(triggerCount).toBe(1);
+
+        // 走 2 秒后再次充满触发第 2 轮定海
+        for (let step = 0; step < 120; step++) {
+            energy.step(1 / 60);
+        }
+        expect(energy.getSnapshot('right').skillRemainingSec).toBeCloseTo(3.0, 4);
+        energy.addEnergy('right', 100);
+        expect(triggerCount).toBe(2);
+        expect(rightActive).toBe(true);
+        expect(energy.getSnapshot('right').skillRemainingSec).toBe(5);
+
+        // 走 3 秒（总 5.0 秒，原本第 1 轮应结束）：因第 2 轮重叠续期，定海仍保持生效
+        for (let step = 0; step < 180; step++) {
+            energy.step(1 / 60);
+        }
+        expect(rightActive).toBe(true);
+        expect(field.getTurbulenceSuppression()).toBeCloseTo(calmTerm.config.turbulenceScale, 6);
+        expect(energy.getSnapshot('right').skillRemainingSec).toBeCloseTo(2.0, 4);
+
+        // 再走 2.05 秒（总 7.05 秒）：第 2 轮结束，立即清除暖流并恢复流场
+        for (let step = 0; step < 123; step++) {
+            energy.step(1 / 60);
+        }
+        expect(rightActive).toBe(false);
+        expect(field.getTurbulenceSuppression()).toBe(1);
+        expect(field.getCirculationSuppression()).toBe(1);
     });
 });

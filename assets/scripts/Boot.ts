@@ -88,7 +88,6 @@ export class Boot extends Component implements LevelSessionHost {
 
     private unsubFeel: (() => void) | null = null;
     private unsubLevelStatus: (() => void) | null = null;
-    private unsubCollision: (() => void) | null = null;
     private unsubLockSfx: (() => void) | null = null;
     private unsubMatchSfx: (() => void) | null = null;
     private unsubSkillSfx: (() => void) | null = null;
@@ -183,16 +182,6 @@ export class Boot extends Component implements LevelSessionHost {
         this.ringSpawner = ringSpawner;
 
         stepper.onAfterStep(this.onAfterPhysicsStep);
-        this.unsubCollision = stepper.world.onCollision((event) => {
-            if (!this.levelState.isPlaying) {
-                return;
-            }
-            if (event.kind === 'pillar') {
-                sfx.playCollision('pillar_rim', event.normalImpulse);
-            } else {
-                sfx.playCollision('ring_hit', event.normalImpulse);
-            }
-        });
         this.unsubLockSfx = scoreJudge.onRingLocked(() => {
             sfx.play('ring_lock');
         });
@@ -329,8 +318,6 @@ export class Boot extends Component implements LevelSessionHost {
 
     onDestroy(): void {
         this.stepper?.offAfterStep(this.onAfterPhysicsStep);
-        this.unsubCollision?.();
-        this.unsubCollision = null;
         this.unsubLockSfx?.();
         this.unsubLockSfx = null;
         this.unsubMatchSfx?.();

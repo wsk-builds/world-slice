@@ -82,8 +82,8 @@ export interface LevelPillarEnergySwitch {
 
 /** 配方分类关双柱色带配置（供 T049 读取） */
 export interface LevelClassifyColors {
-    left: readonly [RingColor, RingColor];
-    right: readonly [RingColor, RingColor];
+    left: readonly RingColor[];
+    right: readonly RingColor[];
 }
 
 /** 关卡完整数据结构（纯逻辑，位置一律采用缸内百分比 0~100） */

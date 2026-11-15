@@ -104,8 +104,9 @@ export function calcMatchEnergyBonusPct(
 /**
  * 柱子充能与技能触发纯逻辑模型（GDD §2.1，T017，纯逻辑不依赖引擎）：
  * - 套中锁定 +10%；本次同时触发消除按消除数量额外加能量（2 圈 +20%、3 圈 +30%、4 圈 +40%）；
- * - 满 100% 发出技能触发事件并保留溢出能量；
- * - 技能持续期间（默认 5 秒）本柱暂停充能，结束后恢复充能并保留溢出；
+ * - 满 100% 触发技能事件并保留溢出能量；
+ * - 技能持续期间（默认 5 秒）本柱照常继续充能：若在持续期内再次充满，立刻触发新一轮技能并从当前时刻起刷新剩余时长（与上一轮重叠并延长总持续时间，不排队等待）；
+ * - 左右两柱充能与技能彼此独立，支持同时释放不同技能（如潮引 + 定海）；
  * - 支持按关卡数据单独开关左/右柱充能（如第 1–2 关双关、第 3 关仅左柱开启）。
  */
 export class PillarEnergy {
@@ -235,7 +236,7 @@ export class PillarEnergy {
         return this.addEnergy(side, bonus);
     }
 
-    /** 增加指定能量值；若本柱关闭或正在释放技能则忽略 */
+    /** 增加指定能量值；若本柱关闭则忽略，技能持续期间照常充能并在满 100% 时立即重叠续期触发 */
     addEnergy(side: EnergySide, amount: number): EnergyGainResult {
         const s = this.state[side];
         if (!s.enabled) {
@@ -249,21 +250,6 @@ export class PillarEnergy {
                 overflow: 0,
                 ratio: 0,
                 litTicks: 0,
-            };
-        }
-
-        if (s.skillActive) {
-            const ratio = this.calcRatio(s.energy);
-            return {
-                side,
-                enabled: true,
-                pausedBySkill: true,
-                added: 0,
-                triggered: false,
-                energy: s.energy,
-                overflow: 0,
-                ratio,
-                litTicks: calcLitEnergyTicks(ratio),
             };
         }
 
@@ -284,7 +270,10 @@ export class PillarEnergy {
 
         s.energy += amount;
         if (s.energy >= this.maxEnergy) {
-            const triggerEvent = this.triggerSkillCycle(side, s);
+            let lastEvent: SkillTriggerEvent | null = null;
+            while (s.energy >= this.maxEnergy && this.maxEnergy > 0) {
+                lastEvent = this.triggerSkillCycle(side, s);
+            }
             const ratio = this.calcRatio(s.energy);
             return {
                 side,
@@ -293,7 +282,7 @@ export class PillarEnergy {
                 added: amount,
                 triggered: true,
                 energy: s.energy,
-                overflow: triggerEvent.overflow,
+                overflow: lastEvent ? lastEvent.overflow : s.energy,
                 ratio,
                 litTicks: calcLitEnergyTicks(ratio),
             };
@@ -314,12 +303,11 @@ export class PillarEnergy {
         };
     }
 
-    /** 推进技能持续倒计时（使用物理时间 dt）；结束时恢复充能，若溢出仍 >= 100% 则顺延触发下一轮 */
+    /** 推进技能持续倒计时（使用物理时间 dt）；归零后结束技能状态 */
     step(dt: number): SkillTriggerEvent[] {
         if (!Number.isFinite(dt) || dt <= 0) {
             return [];
         }
-        const events: SkillTriggerEvent[] = [];
 
         for (const side of ['left', 'right'] as const) {
             const s = this.state[side];
@@ -333,15 +321,10 @@ export class PillarEnergy {
 
             s.skillActive = false;
             s.skillRemainingSec = 0;
-
-            if (s.energy >= this.maxEnergy) {
-                events.push(this.triggerSkillCycle(side, s));
-            } else {
-                this.emitChange(side);
-            }
+            this.emitChange(side);
         }
 
-        return events;
+        return [];
     }
 
     /** 提前结束某侧技能持续态（供外部技能控制器扩展使用） */
@@ -352,9 +335,6 @@ export class PillarEnergy {
         }
         s.skillActive = false;
         s.skillRemainingSec = 0;
-        if (s.enabled && s.energy >= this.maxEnergy) {
-            return this.triggerSkillCycle(side, s);
-        }
         this.emitChange(side);
         return null;
     }
@@ -397,7 +377,8 @@ export class PillarEnergy {
         s.triggerCount += 1;
         if (this.skillDurationSec > 0) {
             s.skillActive = true;
-            s.skillRemainingSec = this.skillDurationSec;
+            // 若当前技能已在释放，新触发的一轮与当前轮部分时间重叠：剩余时长刷新为 max(当前剩余, 本轮时长)
+            s.skillRemainingSec = Math.max(s.skillRemainingSec, this.skillDurationSec);
         } else {
             s.skillActive = false;
             s.skillRemainingSec = 0;

@@ -1,11 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { calcRingPillarGeometry } from '../../../assets/scripts/config/GameConst';
+import { DEFAULT_FEEL_CONFIG } from '../../../assets/scripts/config/FeelConfig';
+import { calcRingPillarGeometry, GameConst } from '../../../assets/scripts/config/GameConst';
 import { TankSpace } from '../../../assets/scripts/config/TankSpace';
+import { solveFeel } from '../../../assets/scripts/core/flow/FeelSolver';
 import { quatFromEulerDeg } from '../../../assets/scripts/core/physics3d/Math3D';
 import { PillarCollider3D } from '../../../assets/scripts/core/physics3d/PillarCollider3D';
 import { TorusBody3D } from '../../../assets/scripts/core/physics3d/TorusBody3D';
 import { TorusWorld3D } from '../../../assets/scripts/core/physics3d/TorusWorld3D';
-import { calcRingTiltDeg3D, clampLockedRingPose3D, isRingOnPillar3D } from '../../../assets/scripts/core/rules/PillarStack';
+import { getRingKindConfig } from '../../../assets/scripts/core/rings/RingKinds';
+import { resolvePillarMatch } from '../../../assets/scripts/core/rules/MatchRule';
+import {
+    calcRingTiltDeg3D,
+    calcSlotCenterY,
+    clampLockedRingPose3D,
+    isRingOnPillar3D,
+    isRingStableForLock,
+} from '../../../assets/scripts/core/rules/PillarStack';
 
 describe('TorusWorld3D 真 3D 圆环翻转、锥形十字柱与立体堆叠', () => {
     const geom = calcRingPillarGeometry(TankSpace.width);
@@ -453,5 +463,161 @@ describe('TorusWorld3D 真 3D 圆环翻转、锥形十字柱与立体堆叠', ()
             world.step(1 / 60);
         }
         expect(events).toHaveLength(0);
+    });
+
+    it('4–5 个重铁圈（sinkScale=2.2）在缸底堆叠落定后静默静止，不再持续误触发密集碰撞音效', () => {
+        const solved = solveFeel(DEFAULT_FEEL_CONFIG);
+        const ironCfg = getRingKindConfig('iron');
+        const world = new TorusWorld3D();
+        const bodies: TorusBody3D[] = [];
+        for (let i = 0; i < 5; i++) {
+            const q = quatFromEulerDeg(i % 2 === 0 ? 8 : -8, i * 37, ((i % 3) - 1) * 6, { x: 0, y: 0, z: 0, w: 1 });
+            bodies.push(
+                world.addBody(
+                    new TorusBody3D({
+                        x: TankSpace.width * 0.5 + (i % 2 === 0 ? -3 : 3),
+                        y: 30 + i * 24,
+                        z: ((i % 3) - 1) * 4,
+                        qx: q.x,
+                        qy: q.y,
+                        qz: q.z,
+                        qw: q.w,
+                        majorRadius: majorR * ironCfg.sizeScale,
+                        tubeRadius: tubeR * ironCfg.sizeScale,
+                        mass: Math.max(0.25, ironCfg.sinkScale),
+                        linearDamping: solved.ringLinearDamping,
+                        angularDamping: solved.ringAngularDamping,
+                        friction: solved.ringFriction,
+                        restitution: solved.ringRestitution,
+                    }),
+                ),
+            );
+        }
+
+        let initialEvents = 0;
+        let tailEvents = 0;
+        let settledEvents = 0;
+        let currentStep = 0;
+        world.onCollision(() => {
+            if (currentStep < 240) {
+                initialEvents++;
+            } else if (currentStep < 420) {
+                tailEvents++;
+            } else {
+                settledEvents++;
+            }
+        });
+
+        for (currentStep = 0; currentStep < 600; currentStep++) {
+            for (const b of bodies) {
+                b.applyCentralForce(0, -b.mass * solved.baseSinkAccel * ironCfg.sinkScale, 0);
+            }
+            world.step(1 / 60);
+        }
+
+        // 前期自然落堆碰撞有正常响应，落定尾声极少，第 7 秒完全静止后 0 误报
+        expect(initialEvents).toBeGreaterThan(5);
+        expect(tailEvents).toBeLessThanOrEqual(10);
+        expect(settledEvents).toBe(0);
+    });
+
+    it('多个重铁圈落入同一根柱子时能稳定静止锁定并触发同款消除（而非微颤卡住无法锁定）', () => {
+        const solved = solveFeel(DEFAULT_FEEL_CONFIG);
+        const ironCfg = getRingKindConfig('iron');
+        const world = new TorusWorld3D();
+        const pillarX = TankSpace.pctToPxX(DEFAULT_FEEL_CONFIG.pillarPosPct);
+        const pillarBottomY = TankSpace.pctToPxY(DEFAULT_FEEL_CONFIG.pillarBottomPct);
+        const pillar = world.addPillar(new PillarCollider3D(pillarX, pillarBottomY, geom));
+        const thick = geom.ringThickness * ironCfg.sizeScale;
+
+        const items: Array<{ body: TorusBody3D; hold: number; locked: boolean }> = [];
+        for (let i = 0; i < 5; i++) {
+            const q = quatFromEulerDeg(i % 2 === 0 ? 10 : -10, i * 40, ((i % 3) - 1) * 8, { x: 0, y: 0, z: 0, w: 1 });
+            const body = world.addBody(
+                new TorusBody3D({
+                    x: pillarX + (i % 2 === 0 ? -2 : 2),
+                    y: pillar.baseTopY + 12 + i * 16,
+                    z: 0,
+                    qx: q.x,
+                    qy: q.y,
+                    qz: q.z,
+                    qw: q.w,
+                    majorRadius: majorR * ironCfg.sizeScale,
+                    tubeRadius: tubeR * ironCfg.sizeScale,
+                    mass: Math.max(0.25, ironCfg.sinkScale),
+                    linearDamping: solved.ringLinearDamping,
+                    angularDamping: solved.ringAngularDamping,
+                    friction: solved.ringFriction,
+                    restitution: solved.ringRestitution,
+                }),
+            );
+            items.push({ body, hold: 0, locked: false });
+        }
+
+        const dt = 1 / 60;
+        const lockedEntries: Array<{ item: TorusBody3D; spec: { kind: 'iron' }; thickness: number }> = [];
+        for (let step = 0; step < 300; step++) {
+            for (const it of items) {
+                if (!it.locked) {
+                    it.body.applyCentralForce(0, -it.body.mass * solved.baseSinkAccel * ironCfg.sinkScale, 0);
+                }
+            }
+            world.step(dt);
+
+            for (const it of items) {
+                if (it.locked) {
+                    continue;
+                }
+                const b = it.body;
+                const onPillar = isRingOnPillar3D({
+                    centerX: b.x,
+                    centerY: b.y,
+                    centerZ: b.z,
+                    normalX: b.basisN.x,
+                    normalY: b.basisN.y,
+                    normalZ: b.basisN.z,
+                    innerRadius: b.innerRadius,
+                    pillarX: pillar.x,
+                    pillarZ: 0,
+                    baseTopY: pillar.baseTopY,
+                    tipY: pillar.tipY,
+                    shaftRadiusAtY: pillar.shaftRadiusAtY(b.y),
+                });
+                const slotCenterY = calcSlotCenterY(
+                    pillar.baseTopY,
+                    lockedEntries.map((e) => e.thickness),
+                    thick,
+                    lockedEntries.length,
+                    GameConst.pillarSlotPitchScale,
+                );
+                const stable =
+                    onPillar &&
+                    isRingStableForLock({
+                        linearSpeedPx: Math.hypot(b.vx, b.vy, b.vz),
+                        angularSpeedRad: Math.hypot(b.wx, b.wy, b.wz),
+                        tiltDeg: calcRingTiltDeg3D(b.basisN.x, b.basisN.y, b.basisN.z),
+                        centerY: b.y,
+                        slotCenterY,
+                    });
+                if (stable) {
+                    it.hold += dt;
+                    if (it.hold >= GameConst.ringLockDurationSec) {
+                        it.locked = true;
+                        b.type = 'static';
+                        lockedEntries.push({ item: b, spec: { kind: 'iron' }, thickness: thick });
+                    }
+                } else {
+                    it.hold = 0;
+                }
+            }
+        }
+
+        expect(lockedEntries.length).toBe(5);
+        const matchRes = resolvePillarMatch(lockedEntries, {
+            baseTopY: pillar.baseTopY,
+            pitchScale: GameConst.pillarSlotPitchScale,
+        });
+        expect(matchRes.matched).toBe(true);
+        expect(matchRes.group?.count).toBe(5);
     });
 });
