@@ -85,7 +85,7 @@ export class PhysicsStepper extends Component {
         this.accumulator += clampedDt;
 
         let sub = 0;
-        while (this.accumulator >= FIXED_STEP_DT && sub < MAX_SUB_STEPS_PER_FRAME) {
+        while (this.running && this.accumulator >= FIXED_STEP_DT && sub < MAX_SUB_STEPS_PER_FRAME) {
             this.stepOnce(FIXED_STEP_DT);
             this.accumulator -= FIXED_STEP_DT;
             sub++;

@@ -128,8 +128,8 @@ export function validateLevel(raw: unknown): LevelValidationResult {
         } else {
             for (const side of ['left', 'right'] as const) {
                 const pair = raw.classifyColors[side];
-                if (!Array.isArray(pair) || pair.length !== 2 || !isRingColor(pair[0]) || !isRingColor(pair[1])) {
-                    errors.push(`classifyColors.${side} 必须是包含 2 个合法颜色的数组`);
+                if (!Array.isArray(pair) || pair.length < 1 || pair.length > 2 || !pair.every((c) => isRingColor(c))) {
+                    errors.push(`classifyColors.${side} 必须是包含 1–2 个合法颜色的数组`);
                 }
             }
         }
@@ -304,8 +304,8 @@ export function validateLevel(raw: unknown): LevelValidationResult {
         ...(typed.classifyColors
             ? {
                   classifyColors: {
-                      left: [typed.classifyColors.left[0], typed.classifyColors.left[1]],
-                      right: [typed.classifyColors.right[0], typed.classifyColors.right[1]],
+                      left: [...typed.classifyColors.left],
+                      right: [...typed.classifyColors.right],
                   },
               }
             : {}),

@@ -117,6 +117,25 @@ export class RingLayer extends Component {
         }
     }
 
+    /** 原位替换为新圈种/颜色的新 Ring 实例（保证尺寸、质量与 3D 网格无残留） */
+    replaceRing(oldRing: Ring, newSpec: RingSpec, pose?: SpawnRingPoseOptions): Ring {
+        const x = oldRing.isBodyReady ? oldRing.body3D.x : oldRing.node.position.x;
+        const y = oldRing.isBodyReady ? oldRing.body3D.y : oldRing.node.position.y;
+        this.destroyRing(oldRing);
+        return this.spawn(
+            x,
+            y,
+            newSpec,
+            0,
+            pose ?? {
+                z: 0,
+                pitchXDeg: 0,
+                yawYDeg: 0,
+                rollZDeg: 0,
+            },
+        );
+    }
+
     /** 重置初始放圈随机种子（重开或切关时保证可复现） */
     resetSpawnRng(seed: number = GameConst.defaultLevelSeed): void {
         this.spawnRng = new SeededRandom(seed ^ 0x5f3759df);

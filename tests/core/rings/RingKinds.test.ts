@@ -31,20 +31,20 @@ describe('RingKinds', () => {
 
     it('sameKind 普通圈按颜色匹配，特殊圈按种类匹配', () => {
         expect(sameKind({ kind: 'normal', color: 'red' }, { kind: 'normal', color: 'red' })).toBe(true);
-        expect(sameKind({ kind: 'normal', color: 'red' }, { kind: 'normal', color: 'blue' })).toBe(false);
+        expect(sameKind({ kind: 'normal', color: 'red' }, { kind: 'normal', color: 'green' })).toBe(false);
         expect(sameKind({ kind: 'normal' }, { kind: 'normal' })).toBe(false);
 
         expect(sameKind({ kind: 'gold' }, { kind: 'gold' })).toBe(true);
-        expect(sameKind({ kind: 'gold', color: 'red' }, { kind: 'gold', color: 'blue' })).toBe(true);
+        expect(sameKind({ kind: 'gold', color: 'red' }, { kind: 'gold', color: 'green' })).toBe(true);
         expect(sameKind({ kind: 'iron' }, { kind: 'iron' })).toBe(true);
         expect(sameKind({ kind: 'wood' }, { kind: 'wood' })).toBe(true);
 
         expect(sameKind({ kind: 'gold' }, { kind: 'iron' })).toBe(false);
-        expect(sameKind({ kind: 'normal', color: 'orange' }, { kind: 'gold' })).toBe(false);
+        expect(sameKind({ kind: 'normal', color: 'green' }, { kind: 'gold' })).toBe(false);
     });
 
-    it('调试预设包含 7 个不重复款式的圈', () => {
-        expect(DEBUG_RING_SLOTS.length).toBe(7);
+    it('调试预设包含 5 个不重复款式的圈', () => {
+        expect(DEBUG_RING_SLOTS.length).toBe(5);
         for (let i = 0; i < DEBUG_RING_SLOTS.length; i++) {
             expect(ringSpecLabel(DEBUG_RING_SLOTS[i]).length).toBeGreaterThan(0);
             for (let j = i + 1; j < DEBUG_RING_SLOTS.length; j++) {

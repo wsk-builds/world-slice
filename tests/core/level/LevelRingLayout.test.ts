@@ -33,8 +33,8 @@ function buildTestPillars() {
 describe('LevelRingLayout 确定性初始摆位', () => {
     it('同种子多次生成产出完全一致的坐标与 3D 姿态，不同种子产出不同布局', () => {
         const entries: LevelRingEntry[] = Array.from({ length: 9 }, (_, i) => ({
-            kind: 'normal' as const,
-            color: (['red', 'green', 'blue'] as const)[i % 3],
+            kind: (i % 3 === 2 ? 'wood' : 'normal') as LevelRingEntry['kind'],
+            ...(i % 3 === 2 ? {} : { color: (['red', 'green'] as const)[i % 2] }),
             pos: 'random' as const,
         }));
 
@@ -82,7 +82,7 @@ describe('LevelRingLayout 确定性初始摆位', () => {
     it('显式百分比圈与随机圈混排时，显式位置精准落地且随机圈避开显式圈', () => {
         const entries: LevelRingEntry[] = [
             { kind: 'normal', color: 'red', pos: { xPct: 50, yPct: 30 }, angleDeg: 12 },
-            { kind: 'normal', color: 'blue', pos: 'random' },
+            { kind: 'wood', pos: 'random' },
             { kind: 'normal', color: 'green', pos: 'random' },
             { kind: 'normal', color: 'red', pos: 'random' },
         ];

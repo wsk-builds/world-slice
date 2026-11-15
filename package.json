@@ -7,6 +7,7 @@
   "scripts": {
     "check": "node tools/check.mjs",
     "check:cloud": "tsc -p .cursor/tsconfig.cloud.json --noEmit",
+    "synth:sfx": "node tools/synth-sfx.mjs",
     "validate:levels": "node tools/validate-levels.mjs",
     "test": "node tools/validate-levels.mjs && vitest run tests"
   },

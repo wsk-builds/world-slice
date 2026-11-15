@@ -10,6 +10,8 @@ export interface FunnelParams {
     pullAccel: number;
     /** 柔和回正速率（1/秒） */
     alignRate: number;
+    /** 允许触发漏斗的最大竖直速度（像素/秒，默认 0 表示仅 vy < 0 时生效） */
+    maxVy?: number;
 }
 
 export interface FunnelBoost {
@@ -17,6 +19,14 @@ export interface FunnelBoost {
     maxTiltDeg: number;
     pullScale: number;
     alignScale?: number;
+    /** 放大后的最小有效吸纳半径下限（避免默认宽容度较低或为 0 时乘倍率后依然过小） */
+    minRadiusPx?: number;
+    /** 放大后的最小居中加速度下限（像素/秒²） */
+    minPullAccel?: number;
+    /** 放大后的最小回正速率下限（1/秒） */
+    minAlignRate?: number;
+    /** 技能期间允许触发漏斗的最大竖直速度上限（像素/秒） */
+    maxVy?: number;
 }
 
 export interface FunnelPillarTarget {
@@ -78,13 +88,14 @@ function resetResult(out: FunnelForceResult): FunnelForceResult {
 export function resolveEffectiveFunnelParams(
     base: Readonly<FunnelParams>,
     boost?: Readonly<FunnelBoost> | null,
-    out: FunnelParams = { radiusPx: 0, maxAngleDeg: 0, pullAccel: 0, alignRate: 0 },
+    out: FunnelParams = { radiusPx: 0, maxAngleDeg: 0, pullAccel: 0, alignRate: 0, maxVy: 0 },
 ): FunnelParams {
     if (!boost) {
         out.radiusPx = Math.max(0, base.radiusPx);
         out.maxAngleDeg = Math.max(0, base.maxAngleDeg);
         out.pullAccel = Math.max(0, base.pullAccel);
         out.alignRate = Math.max(0, base.alignRate);
+        out.maxVy = base.maxVy ?? 0;
         return out;
     }
 
@@ -92,10 +103,11 @@ export function resolveEffectiveFunnelParams(
     const pScale = Math.max(0, boost.pullScale);
     const aScale = Math.max(0, boost.alignScale ?? boost.pullScale);
 
-    out.radiusPx = Math.max(0, base.radiusPx * rScale);
-    out.maxAngleDeg = Math.max(0, Math.max(base.maxAngleDeg, boost.maxTiltDeg));
-    out.pullAccel = Math.max(0, base.pullAccel * pScale);
-    out.alignRate = Math.max(0, base.alignRate * aScale);
+    out.radiusPx = Math.max(0, base.radiusPx * rScale, boost.minRadiusPx ?? 0);
+    out.maxAngleDeg = Math.max(0, base.maxAngleDeg, boost.maxTiltDeg);
+    out.pullAccel = Math.max(0, base.pullAccel * pScale, boost.minPullAccel ?? 0);
+    out.alignRate = Math.max(0, base.alignRate * aScale, boost.minAlignRate ?? 0);
+    out.maxVy = Math.max(base.maxVy ?? 0, boost.maxVy ?? 0);
     return out;
 }
 
@@ -103,7 +115,7 @@ export function resolveEffectiveFunnelParams(
  * 计算单根柱子对单个自由 3D 圆环的入柱宽容三维居中力与三维回正力矩（纯逻辑）。
  * 仅在以下条件全部满足时生效：
  * 1. 柱子未满、刚体处于动态自由状态；
- * 2. 圈正在下落（vy < 0）；
+ * 2. 圈正在下落（vy < maxVy，常态 maxVy = 0 即 vy < 0）；
  * 3. 三维倾角 calcRingTiltDeg3D <= maxAngleDeg；
  * 4. 圈心处于柱尖 (pillarX, tipY, 0) 附近的碗口区（X/Z 水平径向距离与高度区间内；
  *    已低于柱尖肩部且未套住柱尖的圈不再侧向拉入，防止擦柱侧撞）。
@@ -132,7 +144,8 @@ export function computeFunnelForce3D(
     if (params.radiusPx <= 1e-4 || params.maxAngleDeg <= 0 || (params.pullAccel <= 0 && params.alignRate <= 0)) {
         return out;
     }
-    if (!(body.vy < 0)) {
+    const maxVy = params.maxVy ?? 0;
+    if (!(body.vy < maxVy)) {
         return out;
     }
 

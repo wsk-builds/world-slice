@@ -78,12 +78,18 @@ export const Palette = {
         orbFlash: hex('#FFF7CC'),
     },
 
-    /** 灰盒七种锁脉环配色 */
+    /** T018 左柱「潮引」漩流线配色 */
+    tidePullVortexOuter: hex('#5CE6D0', 0.78),
+    tidePullVortexInner: hex('#FFF7CC', 0.92),
+
+    /** T019 右柱「定海」缸底暖流线与波纹配色 */
+    calmSeaWarmOuter: hex('#F7C97E', 0.56),
+    calmSeaWarmInner: hex('#FFF1C4', 0.78),
+
+    /** 灰盒五种锁脉环配色 */
     ring: {
         red: hex('#EE5253'),
         green: hex('#2ED573'),
-        blue: hex('#1E90FF'),
-        orange: hex('#FFA502'),
         gold: hex('#FFD32A'),
         goldAccent: hex('#FFF3B0'),
         iron: hex('#57606F'),
@@ -124,5 +130,46 @@ export const Palette = {
         sliderDefaultMark: hex('#FFD166'),
         accentText: hex('#76E5DC'),
         mutedText: hex('#93A4B5'),
+    },
+
+    /** T021 敲玻璃震纹与拇指热区调试配色 */
+    glassTap: {
+        rippleOuter: hex('#A8F5FF', 0.86),
+        rippleInner: hex('#FFFFFF', 0.92),
+        rippleHitAccent: hex('#FFE066', 0.92),
+    },
+    hotZone: {
+        fill: hex('#64DFDF', 0.16),
+        border: hex('#64DFDF', 0.78),
+        boundary: hex('#FFE066', 0.85),
+    },
+
+    /** T022 拖拽摆关器配色 */
+    editor: {
+        panelBg: hex('#111A24', 0.92),
+        panelBorder: hex('#64DFDF', 0.78),
+        exportBg: hex('#0D141C', 0.97),
+        btnFill: hex('#28384A'),
+        btnActiveFill: hex('#2B6B73'),
+        btnPrimaryFill: hex('#2E7D6B'),
+        btnDangerFill: hex('#7A3440'),
+        btnMutedFill: hex('#202833'),
+        btnBorder: hex('#7CA2BD'),
+        btnActiveBorder: hex('#8EE6CE'),
+        selectionRing: hex('#FFE066', 0.96),
+        selectionCross: hex('#64DFDF', 0.9),
+        validText: hex('#5CE6D0'),
+        errorText: hex('#FF7B7B'),
+    },
+
+    /** T023 挂机自测角标与报错提示配色 */
+    soakBot: {
+        badgeBg: hex('#111A24', 0.88),
+        badgeBorder: hex('#5CE6D0', 0.88),
+        badgeText: hex('#76E5DC'),
+        errorBg: hex('#2B0D14', 0.94),
+        errorBorder: hex('#FF4D4F'),
+        errorTitle: hex('#FF6B6B'),
+        errorText: hex('#FFF1F0'),
     },
 } as const;

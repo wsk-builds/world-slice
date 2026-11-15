@@ -1,16 +1,29 @@
 import { DEFAULT_FEEL_CONFIG, FeelConfig, FeelParams } from '../config/FeelConfig';
+import {
+    DEFAULT_HOT_ZONE_WIDTH_PCT,
+    MAX_HOT_ZONE_WIDTH_PCT,
+    MIN_HOT_ZONE_WIDTH_PCT,
+} from '../config/HotZones';
 
 export type FeelKey = keyof FeelParams;
+export type TuningKey = FeelKey | 'hotZoneWidthPct';
 export type PresetSlot = 1 | 2 | 3;
 
-export interface FeelSliderSpec {
-    readonly key: FeelKey;
+export interface TuningSliderSpec<K extends string = TuningKey> {
+    readonly key: K;
     readonly label: string;
     readonly unit: string;
     readonly min: number;
     readonly max: number;
     readonly step: number;
     readonly decimals: number;
+}
+
+export type FeelSliderSpec = TuningSliderSpec<FeelKey>;
+
+export interface TuningPresetBundle {
+    feel: FeelParams;
+    hotZoneWidthPct: number;
 }
 
 export interface StorageLike {
@@ -43,31 +56,57 @@ export const FEEL_SLIDER_SPECS: readonly FeelSliderSpec[] = [
     { key: 'funnelTolerance', label: '入柱宽容', unit: '', min: 0, max: 1, step: 0.05, decimals: 2 },
 ];
 
-const SPEC_BY_KEY: Readonly<Record<FeelKey, FeelSliderSpec>> = buildSpecMap();
+/** T021 拇指热区宽度滑块定义（独立于 FeelParams 12 个物理体感字段） */
+export const HOT_ZONE_SLIDER_SPEC: TuningSliderSpec<'hotZoneWidthPct'> = {
+    key: 'hotZoneWidthPct',
+    label: '热区宽度',
+    unit: '%',
+    min: MIN_HOT_ZONE_WIDTH_PCT,
+    max: MAX_HOT_ZONE_WIDTH_PCT,
+    step: 1,
+    decimals: 0,
+};
 
-function buildSpecMap(): Record<FeelKey, FeelSliderSpec> {
-    const map = {} as Record<FeelKey, FeelSliderSpec>;
-    for (const spec of FEEL_SLIDER_SPECS) {
+export const ALL_TUNING_SLIDER_SPECS: readonly TuningSliderSpec[] = [
+    ...FEEL_SLIDER_SPECS,
+    HOT_ZONE_SLIDER_SPEC,
+];
+
+const SPEC_BY_KEY: Readonly<Record<TuningKey, TuningSliderSpec>> = buildSpecMap();
+
+function buildSpecMap(): Record<TuningKey, TuningSliderSpec> {
+    const map = {} as Record<TuningKey, TuningSliderSpec>;
+    for (const spec of ALL_TUNING_SLIDER_SPECS) {
         map[spec.key] = spec;
     }
     return map;
 }
 
 export function getFeelSliderSpec(key: FeelKey): FeelSliderSpec {
+    return SPEC_BY_KEY[key] as FeelSliderSpec;
+}
+
+export function getTuningSliderSpec(key: TuningKey): TuningSliderSpec {
     return SPEC_BY_KEY[key];
 }
 
 /** 按步长对齐、夹紧到滑块范围并消除浮点尾数误差 */
-export function snapSliderValue(raw: number, spec: FeelSliderSpec): number {
+export function snapSliderValue<K extends string>(raw: number, spec: TuningSliderSpec<K>): number {
     if (!Number.isFinite(raw)) {
-        return DEFAULT_FEEL_CONFIG[spec.key];
+        return spec.key === 'hotZoneWidthPct'
+            ? DEFAULT_HOT_ZONE_WIDTH_PCT
+            : DEFAULT_FEEL_CONFIG[spec.key as FeelKey];
     }
     const stepped = spec.min + Math.round((raw - spec.min) / spec.step) * spec.step;
     const clamped = Math.min(Math.max(stepped, spec.min), spec.max);
     return Number(clamped.toFixed(spec.decimals));
 }
 
-export function formatFeelValue(spec: FeelSliderSpec, value: number): string {
+export function snapHotZoneWidthPct(raw: number): number {
+    return snapSliderValue(raw, HOT_ZONE_SLIDER_SPEC);
+}
+
+export function formatFeelValue<K extends string>(spec: TuningSliderSpec<K>, value: number): string {
     const numStr = value.toFixed(spec.decimals);
     return spec.unit ? `${numStr} ${spec.unit}` : numStr;
 }
@@ -87,6 +126,18 @@ export function sanitizeFeelParams(raw: unknown): FeelParams {
         }
     }
     return out;
+}
+
+/** 校验并补齐含热区宽度的调参快照 */
+export function sanitizeTuningPreset(raw: unknown): TuningPresetBundle {
+    const src = raw && typeof raw === 'object' ? (raw as Partial<Record<TuningKey, unknown>>) : {};
+    const feel = sanitizeFeelParams(src);
+    const rawHz = src.hotZoneWidthPct;
+    const hotZoneWidthPct =
+        typeof rawHz === 'number' && Number.isFinite(rawHz)
+            ? snapHotZoneWidthPct(rawHz)
+            : DEFAULT_HOT_ZONE_WIDTH_PCT;
+    return { feel, hotZoneWidthPct };
 }
 
 export function cloneFeelParams(feel: Readonly<FeelParams> = FeelConfig): FeelParams {
@@ -122,6 +173,28 @@ export function saveFeelPreset(
     }
 }
 
+export function saveTuningPreset(
+    slot: PresetSlot,
+    feel: Readonly<FeelParams> = FeelConfig,
+    hotZoneWidthPct: number = DEFAULT_HOT_ZONE_WIDTH_PCT,
+    storage: StorageLike | null = resolveDefaultStorage(),
+): boolean {
+    if (!storage) {
+        return false;
+    }
+    try {
+        const clean = sanitizeFeelParams(feel);
+        const payload = {
+            ...clean,
+            hotZoneWidthPct: snapHotZoneWidthPct(hotZoneWidthPct),
+        };
+        storage.setItem(presetStorageKey(slot), JSON.stringify(payload));
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export function loadFeelPreset(
     slot: PresetSlot,
     storage: StorageLike | null = resolveDefaultStorage(),
@@ -139,6 +212,28 @@ export function loadFeelPreset(
             return null;
         }
         return sanitizeFeelParams(parsed);
+    } catch {
+        return null;
+    }
+}
+
+export function loadTuningPreset(
+    slot: PresetSlot,
+    storage: StorageLike | null = resolveDefaultStorage(),
+): TuningPresetBundle | null {
+    if (!storage) {
+        return null;
+    }
+    try {
+        const raw = storage.getItem(presetStorageKey(slot));
+        if (!raw) {
+            return null;
+        }
+        const parsed: unknown = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') {
+            return null;
+        }
+        return sanitizeTuningPreset(parsed);
     } catch {
         return null;
     }
@@ -169,18 +264,39 @@ export function deleteFeelPreset(
     }
 }
 
-/** 导出供控制台与剪贴板使用的标准多行 JSON */
-export function formatFeelExportJson(feel: Readonly<FeelParams> = FeelConfig): string {
-    return JSON.stringify(cloneFeelParams(feel), null, 4);
+/** 导出供控制台与剪贴板使用的标准多行 JSON（传 hotZoneWidthPct 时一并包含热区宽度） */
+export function formatFeelExportJson(
+    feel: Readonly<FeelParams> = FeelConfig,
+    hotZoneWidthPct?: number,
+): string {
+    const clean = cloneFeelParams(feel);
+    if (hotZoneWidthPct === undefined) {
+        return JSON.stringify(clean, null, 4);
+    }
+    return JSON.stringify(
+        {
+            ...clean,
+            hotZoneWidthPct: snapHotZoneWidthPct(hotZoneWidthPct),
+        },
+        null,
+        4,
+    );
 }
 
-/** 导出供面板内显示复制的紧凑多行合法 JSON（4 行，一屏可读全） */
-export function formatFeelCompactJson(feel: Readonly<FeelParams> = FeelConfig): string {
+/** 导出供面板内显示复制的紧凑多行合法 JSON（一屏可读全） */
+export function formatFeelCompactJson(
+    feel: Readonly<FeelParams> = FeelConfig,
+    hotZoneWidthPct?: number,
+): string {
     const clean = cloneFeelParams(feel);
     const entries = FEEL_SLIDER_SPECS.map((s) => `"${s.key}": ${clean[s.key]}`);
+    if (hotZoneWidthPct !== undefined) {
+        entries.push(`"hotZoneWidthPct": ${snapHotZoneWidthPct(hotZoneWidthPct)}`);
+    }
+    const perLine = entries.length > 12 ? 4 : 3;
     const lines: string[] = [];
-    for (let i = 0; i < entries.length; i += 3) {
-        lines.push('  ' + entries.slice(i, i + 3).join(', '));
+    for (let i = 0; i < entries.length; i += perLine) {
+        lines.push('  ' + entries.slice(i, i + perLine).join(', '));
     }
     return `{\n${lines.join(',\n')}\n}`;
 }

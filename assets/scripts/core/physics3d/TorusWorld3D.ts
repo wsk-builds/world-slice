@@ -5,20 +5,62 @@ import { PillarCollider3D } from './PillarCollider3D';
 import { TorusBody3D } from './TorusBody3D';
 import {
     Contact3D,
+    ContactKind3D,
     detectTorusPillarContacts,
     detectTorusTankContacts,
     detectTorusTorusContacts,
     TankBounds3D,
 } from './TorusContactDetect';
 
+export type CollisionKind3D = ContactKind3D;
+
+export interface CollisionEvent3D {
+    kind: CollisionKind3D;
+    bodyA: TorusBody3D;
+    bodyB: TorusBody3D | null;
+    pillarIndex: number;
+    normalImpulse: number;
+    approachSpeed: number;
+    px: number;
+    py: number;
+    pz: number;
+}
+
+export type CollisionListener3D = (event: CollisionEvent3D) => void;
+
+interface FrameCollisionSlot {
+    kind: CollisionKind3D;
+    idA: number;
+    idB: number;
+    event: CollisionEvent3D;
+}
+
+interface PairContactRecord {
+    step: number;
+    ax: number;
+    ay: number;
+    az: number;
+    bx: number;
+    by: number;
+    bz: number;
+}
+
 const SUB_STEPS = 2;
-const VELOCITY_ITERATIONS = 10;
+const VELOCITY_ITERATIONS_BASE = 14;
+const VELOCITY_ITERATIONS_CROWDED = 32;
+const VELOCITY_CROWDED_CONTACTS = 10;
+const VELOCITY_EARLY_EXIT_MIN_ITERS = 8;
+const VELOCITY_CONVERGE_DELTA = 0.02;
 const POSITION_SLOP_PX = 0.25;
 const POSITION_BAUMGARTE = 0.22;
 const MAX_POSITION_CORRECTION_PX = 2.0;
 const RESTITUTION_SPEED_THRESHOLD = 36;
 const MAX_LINEAR_SPEED_PX = 1800;
 const MAX_ANGULAR_SPEED_RAD = 28;
+const RESTING_FORCE_DOWN_MAX_ACCEL = 1600;
+const PAIR_CHATTER_WINDOW_STEPS = 24;
+const PAIR_CHATTER_MAX_MOVE_PX = 1.2;
+const PAIR_CHATTER_MAX_APPROACH_SPEED = 45;
 
 const tempCrossA: Vec3Like = { x: 0, y: 0, z: 0 };
 const tempCrossB: Vec3Like = { x: 0, y: 0, z: 0 };
@@ -37,7 +79,20 @@ export class TorusWorld3D {
     readonly bodies: TorusBody3D[] = [];
     readonly pillars: PillarCollider3D[] = [];
 
+    /** 触发碰撞事件回调所需的最小法向冲量阈值与最小碰撞接近速度（排除静止支撑微颤） */
+    collisionImpulseThreshold: number = GameConst.sfxCollisionMinImpulse;
+    collisionApproachSpeedThreshold: number = GameConst.sfxCollisionMinApproachSpeed;
+
     private readonly contacts: Contact3D[] = [];
+    private readonly contactBodyIds = new Set<number>();
+    private readonly frameKineticBounds = new Map<number, number>();
+    private readonly pairHistory = new Map<number, PairContactRecord>();
+    private readonly collisionListeners: CollisionListener3D[] = [];
+    private collisionListenersSnapshot: CollisionListener3D[] = [];
+    private listenersDirty = false;
+    private readonly frameCollisions: FrameCollisionSlot[] = [];
+    private frameCollisionCount = 0;
+    private stepCounter = 0;
 
     constructor(width = TankSpace.width, height = TankSpace.height) {
         const geom = calcRingPillarGeometry(width);
@@ -49,6 +104,24 @@ export class TorusWorld3D {
             wallFriction: 0.08,
             wallRestitution: 0.1,
         };
+    }
+
+    onCollision(cb: CollisionListener3D): () => void {
+        if (!this.collisionListeners.includes(cb)) {
+            this.collisionListeners.push(cb);
+            this.listenersDirty = true;
+        }
+        return () => {
+            this.offCollision(cb);
+        };
+    }
+
+    offCollision(cb: CollisionListener3D): void {
+        const idx = this.collisionListeners.indexOf(cb);
+        if (idx >= 0) {
+            this.collisionListeners.splice(idx, 1);
+            this.listenersDirty = true;
+        }
     }
 
     updateTankBounds(width = TankSpace.width, height = TankSpace.height): void {
@@ -77,6 +150,12 @@ export class TorusWorld3D {
 
     clearBodies(): void {
         this.bodies.length = 0;
+        this.frameCollisions.length = 0;
+        this.frameCollisionCount = 0;
+        this.contactBodyIds.clear();
+        this.frameKineticBounds.clear();
+        this.pairHistory.clear();
+        this.stepCounter = 0;
     }
 
     addPillar(pillar: PillarCollider3D): PillarCollider3D {
@@ -90,10 +169,30 @@ export class TorusWorld3D {
         this.pillars.length = 0;
     }
 
-    /** 推进 dt 秒三维物理步（施力在步前已挂到各刚体，步末自动清空累积力） */
+    /** 推进 dt 秒三维物理步（施力在步前已挂到各刚体，步末自动清空累积力并派发去重后的有效碰撞事件） */
     step(dt: number): void {
         if (!(dt > 0) || this.bodies.length === 0) {
             return;
+        }
+
+        this.stepCounter++;
+        this.frameCollisionCount = 0;
+
+        if (this.collisionListeners.length > 0) {
+            this.frameKineticBounds.clear();
+            for (let i = 0; i < this.bodies.length; i++) {
+                const b = this.bodies[i];
+                if (b.type === 'dynamic') {
+                    const rimSpd = Math.hypot(b.vx, b.vy, b.vz) + Math.hypot(b.wx, b.wy, b.wz) * b.outerRadius;
+                    const extraAccelDv =
+                        Math.hypot(b.fx, Math.max(0, b.fy) + Math.max(0, -b.fy - RESTING_FORCE_DOWN_MAX_ACCEL * b.mass), b.fz) *
+                        b.invMass *
+                        dt;
+                    this.frameKineticBounds.set(b.id, rimSpd + extraAccelDv);
+                } else {
+                    this.frameKineticBounds.set(b.id, 0);
+                }
+            }
         }
 
         const subDt = dt / SUB_STEPS;
@@ -103,6 +202,10 @@ export class TorusWorld3D {
 
         for (let i = 0; i < this.bodies.length; i++) {
             this.bodies[i].clearForces();
+        }
+
+        if (this.collisionListeners.length > 0 && this.frameCollisionCount > 0) {
+            this.dispatchFrameCollisions();
         }
     }
 
@@ -139,7 +242,7 @@ export class TorusWorld3D {
             if (a.type === 'dynamic') {
                 detectTorusTankContacts(a, this.tank, this.contacts);
                 for (let p = 0; p < this.pillars.length; p++) {
-                    detectTorusPillarContacts(a, this.pillars[p], this.contacts);
+                    detectTorusPillarContacts(a, this.pillars[p], this.contacts, p);
                 }
             }
             for (let j = i + 1; j < nBodies; j++) {
@@ -147,11 +250,29 @@ export class TorusWorld3D {
             }
         }
 
-        // 3. 预计算接触约束有效质量并顺序冲量迭代求解速度
+        // 3. 预计算接触约束有效质量并对称顺序冲量迭代求解速度（支持早停，保证多层重铁圈堆叠收敛）
+        this.contactBodyIds.clear();
         if (this.contacts.length > 0) {
+            for (let i = 0; i < this.contacts.length; i++) {
+                const c = this.contacts[i];
+                this.contactBodyIds.add(c.bodyA.id);
+                if (c.bodyB) {
+                    this.contactBodyIds.add(c.bodyB.id);
+                }
+            }
             this.prepareContacts();
-            for (let iter = 0; iter < VELOCITY_ITERATIONS; iter++) {
-                this.solveVelocityConstraints();
+            const maxIters =
+                this.contacts.length > VELOCITY_CROWDED_CONTACTS
+                    ? VELOCITY_ITERATIONS_CROWDED
+                    : VELOCITY_ITERATIONS_BASE;
+            for (let iter = 0; iter < maxIters; iter++) {
+                const maxDelta = this.solveVelocityConstraints(iter % 2 === 1);
+                if (iter >= VELOCITY_EARLY_EXIT_MIN_ITERS && iter % 2 === 1 && maxDelta < VELOCITY_CONVERGE_DELTA) {
+                    break;
+                }
+            }
+            if (this.collisionListeners.length > 0) {
+                this.recordSubstepCollisions();
             }
         }
 
@@ -161,16 +282,23 @@ export class TorusWorld3D {
             if (b.type !== 'dynamic') {
                 continue;
             }
-            // 水底堆叠静止微阻尼抑抖：极低速接触下快速平息微颤
-            const linSpd = Math.hypot(b.vx, b.vy, b.vz);
-            const angSpd = Math.hypot(b.wx, b.wy, b.wz);
-            if (linSpd < 2.2 && angSpd < 0.08 && Math.hypot(b.fx, b.fy + 500 * b.mass, b.fz) < 900) {
-                b.vx *= 0.82;
-                b.vy *= 0.82;
-                b.vz *= 0.82;
-                b.wx *= 0.78;
-                b.wy *= 0.78;
-                b.wz *= 0.78;
+            // 接触堆叠静止微阻尼抑抖：按各圈种实际受力判定（兼容铁圈 2.2x 重力与调参重力）
+            if (this.contactBodyIds.has(b.id)) {
+                const linSpd = Math.hypot(b.vx, b.vy, b.vz);
+                const angSpd = Math.hypot(b.wx, b.wy, b.wz);
+                if (
+                    linSpd < 2.2 &&
+                    angSpd < 0.08 &&
+                    b.fy <= 150 * b.mass &&
+                    Math.hypot(b.fx, b.fz) < 400 * b.mass
+                ) {
+                    b.vx *= 0.82;
+                    b.vy *= 0.82;
+                    b.vz *= 0.82;
+                    b.wx *= 0.78;
+                    b.wy *= 0.78;
+                    b.wz *= 0.78;
+                }
             }
 
             b.x += b.vx * dt;
@@ -188,7 +316,7 @@ export class TorusWorld3D {
                 if (a.type === 'dynamic') {
                     detectTorusTankContacts(a, this.tank, this.contacts);
                     for (let p = 0; p < this.pillars.length; p++) {
-                        detectTorusPillarContacts(a, this.pillars[p], this.contacts);
+                        detectTorusPillarContacts(a, this.pillars[p], this.contacts, p);
                     }
                 }
                 for (let j = i + 1; j < nBodies; j++) {
@@ -232,12 +360,172 @@ export class TorusWorld3D {
             const rvz = tempVelA.z - tempVelB.z;
             const vn = rvx * c.nx + rvy * c.ny + rvz * c.nz;
 
+            c.preImpactApproachSpeed = vn < 0 ? -vn : 0;
             c.velocityBias = vn < -RESTITUTION_SPEED_THRESHOLD ? -c.restitution * vn : 0;
         }
     }
 
-    private solveVelocityConstraints(): void {
+    private recordSubstepCollisions(): void {
         for (let i = 0; i < this.contacts.length; i++) {
+            const c = this.contacts[i];
+            if (c.jnAcc <= 0) {
+                continue;
+            }
+
+            let idA = c.bodyA.id;
+            let idB = -1;
+            if (c.kind === 'ring' && c.bodyB) {
+                const otherId = c.bodyB.id;
+                if (otherId < idA) {
+                    idB = idA;
+                    idA = otherId;
+                } else {
+                    idB = otherId;
+                }
+            } else if (c.kind === 'pillar') {
+                idB = c.pillarIndex;
+            }
+
+            let slot: FrameCollisionSlot | null = null;
+            for (let k = 0; k < this.frameCollisionCount; k++) {
+                const candidate = this.frameCollisions[k];
+                if (candidate.kind === c.kind && candidate.idA === idA && candidate.idB === idB) {
+                    slot = candidate;
+                    break;
+                }
+            }
+
+            if (slot) {
+                slot.event.normalImpulse += c.jnAcc;
+                if (c.preImpactApproachSpeed > slot.event.approachSpeed) {
+                    slot.event.approachSpeed = c.preImpactApproachSpeed;
+                    slot.event.px = c.px;
+                    slot.event.py = c.py;
+                    slot.event.pz = c.pz;
+                }
+                continue;
+            }
+
+            if (this.frameCollisionCount < this.frameCollisions.length) {
+                slot = this.frameCollisions[this.frameCollisionCount];
+                slot.kind = c.kind;
+                slot.idA = idA;
+                slot.idB = idB;
+                const ev = slot.event;
+                ev.kind = c.kind;
+                ev.bodyA = c.bodyA;
+                ev.bodyB = c.bodyB;
+                ev.pillarIndex = c.pillarIndex;
+                ev.normalImpulse = c.jnAcc;
+                ev.approachSpeed = c.preImpactApproachSpeed;
+                ev.px = c.px;
+                ev.py = c.py;
+                ev.pz = c.pz;
+            } else {
+                slot = {
+                    kind: c.kind,
+                    idA,
+                    idB,
+                    event: {
+                        kind: c.kind,
+                        bodyA: c.bodyA,
+                        bodyB: c.bodyB,
+                        pillarIndex: c.pillarIndex,
+                        normalImpulse: c.jnAcc,
+                        approachSpeed: c.preImpactApproachSpeed,
+                        px: c.px,
+                        py: c.py,
+                        pz: c.pz,
+                    },
+                };
+                this.frameCollisions.push(slot);
+            }
+            this.frameCollisionCount++;
+        }
+    }
+
+    private dispatchFrameCollisions(): void {
+        if (this.listenersDirty) {
+            this.collisionListenersSnapshot = this.collisionListeners.slice();
+            this.listenersDirty = false;
+        }
+        const listeners = this.collisionListenersSnapshot;
+        const minImp = this.collisionImpulseThreshold;
+        const minSpeed = this.collisionApproachSpeedThreshold;
+        const minKinetic = Math.min(16, minSpeed * 0.72);
+
+        for (let i = 0; i < this.frameCollisionCount; i++) {
+            const slot = this.frameCollisions[i];
+            const ev = slot.event;
+            if (ev.normalImpulse < minImp || ev.approachSpeed < minSpeed) {
+                continue;
+            }
+            if (minKinetic > 0) {
+                const kA = this.frameKineticBounds.get(ev.bodyA.id) ?? minKinetic;
+                const kB = ev.bodyB ? (this.frameKineticBounds.get(ev.bodyB.id) ?? 0) : 0;
+                if (Math.max(kA, kB) < minKinetic) {
+                    continue;
+                }
+            }
+
+            const kindCode = slot.kind === 'tank' ? 0 : slot.kind === 'pillar' ? 1 : 2;
+            const pairKey = (kindCode * 1048576 + slot.idA) * 1048576 + (slot.idB + 1);
+            const a = ev.bodyA;
+            const b = ev.bodyB;
+            const bx = b ? b.x : 0;
+            const by = b ? b.y : 0;
+            const bz = b ? b.z : 0;
+            const prev = this.pairHistory.get(pairKey);
+            if (prev) {
+                const recent = this.stepCounter - prev.step <= PAIR_CHATTER_WINDOW_STEPS;
+                const moveA = Math.hypot(a.x - prev.ax, a.y - prev.ay, a.z - prev.az);
+                const moveB = b ? Math.hypot(bx - prev.bx, by - prev.by, bz - prev.bz) : 0;
+                if (
+                    recent &&
+                    moveA < PAIR_CHATTER_MAX_MOVE_PX &&
+                    moveB < PAIR_CHATTER_MAX_MOVE_PX &&
+                    ev.approachSpeed < PAIR_CHATTER_MAX_APPROACH_SPEED
+                ) {
+                    prev.step = this.stepCounter;
+                    continue;
+                }
+                prev.step = this.stepCounter;
+                prev.ax = a.x;
+                prev.ay = a.y;
+                prev.az = a.z;
+                prev.bx = bx;
+                prev.by = by;
+                prev.bz = bz;
+            } else {
+                this.pairHistory.set(pairKey, {
+                    step: this.stepCounter,
+                    ax: a.x,
+                    ay: a.y,
+                    az: a.z,
+                    bx,
+                    by,
+                    bz,
+                });
+                if (this.pairHistory.size > 256) {
+                    for (const [k, rec] of this.pairHistory) {
+                        if (this.stepCounter - rec.step > PAIR_CHATTER_WINDOW_STEPS) {
+                            this.pairHistory.delete(k);
+                        }
+                    }
+                }
+            }
+
+            for (let j = 0; j < listeners.length; j++) {
+                listeners[j](ev);
+            }
+        }
+    }
+
+    private solveVelocityConstraints(reverse: boolean): number {
+        const n = this.contacts.length;
+        let maxDeltaJn = 0;
+        for (let idx = 0; idx < n; idx++) {
+            const i = reverse ? n - 1 - idx : idx;
             const c = this.contacts[i];
             const a = c.bodyA;
             const b = c.bodyB;
@@ -263,6 +551,10 @@ export class TorusWorld3D {
             dJn = c.jnAcc - prevJn;
 
             if (dJn !== 0) {
+                const absDelta = dJn < 0 ? -dJn : dJn;
+                if (absDelta > maxDeltaJn) {
+                    maxDeltaJn = absDelta;
+                }
                 applyImpulsePair(a, b, c.px, c.py, c.pz, c.nx * dJn, c.ny * dJn, c.nz * dJn);
             }
 
@@ -298,6 +590,7 @@ export class TorusWorld3D {
                 }
             }
         }
+        return maxDeltaJn;
     }
 
     private solvePositionConstraints(): void {

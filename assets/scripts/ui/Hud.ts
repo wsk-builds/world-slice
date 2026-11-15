@@ -48,6 +48,7 @@ export class Hud extends Component {
     private lastUrgent = false;
     private lastFreeRings = -1;
     private lastLevelTitle = '';
+    private suppressedByEditor = false;
 
     static create(machine: Node, options: HudCreateOptions): Hud {
         const node = new Node('Hud');
@@ -103,6 +104,15 @@ export class Hud extends Component {
         if (callbacks.onRestart !== undefined) {
             this.onRestartCb = callbacks.onRestart;
         }
+    }
+
+    /** 摆关编辑态时压制全屏暂停/结算遮罩，防止遮挡内屏拖圈 */
+    setSuppressedByEditor(suppressed: boolean): void {
+        if (this.suppressedByEditor === suppressed) {
+            return;
+        }
+        this.suppressedByEditor = suppressed;
+        this.syncFromState(true);
     }
 
     /** 将 Hud 显示同步到当前 LevelState，仅在状态/文案变化时刷新文字与重绘 Graphics */
@@ -281,7 +291,7 @@ export class Hud extends Component {
     private updateOverlayContent(status: LevelStatus, remainingSec: number, freeRings: number): void {
         this.pauseBtnLabel.string = status === 'paused' ? '继续' : '暂停';
 
-        const showOverlay = status === 'paused' || status === 'won' || status === 'lost';
+        const showOverlay = !this.suppressedByEditor && (status === 'paused' || status === 'won' || status === 'lost');
         this.overlayNode.active = showOverlay;
         if (!showOverlay) {
             return;
@@ -338,8 +348,8 @@ export class Hud extends Component {
             10,
         );
 
-        // 4. 仅在暂停或结算时于内屏绘制灰盒提示遮罩与卡片
-        if (status !== 'paused' && status !== 'won' && status !== 'lost') {
+        // 4. 仅在暂停或结算（且非摆关编辑态）时于内屏绘制灰盒提示遮罩与卡片
+        if (this.suppressedByEditor || (status !== 'paused' && status !== 'won' && status !== 'lost')) {
             return;
         }
 
@@ -377,7 +387,7 @@ export class Hud extends Component {
     }
 
     private handlePauseTap(): void {
-        if (!this.levelState) {
+        if (!this.levelState || this.suppressedByEditor) {
             return;
         }
         const status = this.levelState.status;

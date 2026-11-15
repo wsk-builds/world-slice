@@ -85,12 +85,17 @@ export class Funnel extends Component {
         maxTiltDeg: number,
         pullScale: number,
         alignScale?: number,
+        extra?: Pick<FunnelBoost, 'minRadiusPx' | 'minPullAccel' | 'minAlignRate' | 'maxVy'>,
     ): void {
         this.boosts[side] = {
             radiusScale,
             maxTiltDeg,
             pullScale,
             alignScale,
+            minRadiusPx: extra?.minRadiusPx,
+            minPullAccel: extra?.minPullAccel,
+            minAlignRate: extra?.minAlignRate,
+            maxVy: extra?.maxVy,
         };
     }
 

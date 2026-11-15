@@ -3,7 +3,7 @@
  * 规则依据 GDD §3.2、§3.4、§4.1。
  */
 
-export type RingColor = 'red' | 'green' | 'blue' | 'orange';
+export type RingColor = 'red' | 'green';
 
 export type RingKind = 'normal' | 'gold' | 'iron' | 'wood';
 
@@ -23,7 +23,7 @@ export interface RingKindConfig {
     flowFollow: number;
 }
 
-export const RING_COLORS: readonly RingColor[] = ['red', 'green', 'blue', 'orange'];
+export const RING_COLORS: readonly RingColor[] = ['red', 'green'];
 
 export const RING_KIND_CONFIGS: Readonly<Record<RingKind, RingKindConfig>> = {
     normal: {
@@ -52,12 +52,10 @@ export const RING_KIND_CONFIGS: Readonly<Record<RingKind, RingKindConfig>> = {
     },
 };
 
-/** 调试数字键 1–7 对应的圈预设 */
+/** 调试数字键 1–5 对应的圈预设 */
 export const DEBUG_RING_SLOTS: readonly RingSpec[] = [
     { kind: 'normal', color: 'red' },
     { kind: 'normal', color: 'green' },
-    { kind: 'normal', color: 'blue' },
-    { kind: 'normal', color: 'orange' },
     { kind: 'gold' },
     { kind: 'iron' },
     { kind: 'wood' },
@@ -87,8 +85,6 @@ export function sameKind(a: RingSpec, b: RingSpec): boolean {
 const COLOR_LABEL: Record<RingColor, string> = {
     red: '红圈',
     green: '绿圈',
-    blue: '蓝圈',
-    orange: '橙圈',
 };
 
 const KIND_LABEL: Record<Exclude<RingKind, 'normal'>, string> = {

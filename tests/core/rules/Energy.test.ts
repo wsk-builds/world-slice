@@ -86,60 +86,82 @@ describe('Energy 柱子充能与技能触发（2/3/4 消梯度能量）', () => 
         });
     });
 
-    it('技能持续期间该柱暂停充能，结束后恢复充能且溢出仍在；未接技能效果时 5 秒后自动恢复不卡死', () => {
+    it('技能持续期间该柱照常充能，再次充满时立即重叠续期延长总持续时间（不排队等第一轮结束），且左右不同技能可同时释放', () => {
         const energy = new PillarEnergy();
         const triggers: SkillTriggerEvent[] = [];
         energy.onSkillTrigger((e) => triggers.push(e));
 
-        // 凑到 90% 后再 2 消 (+30%) 触发（保留 20%）
+        // 凑到 90% 后再 2 消 (+30%) 触发第 1 轮右柱「定海」（[0s, 5s]，保留 20%）
         energy.addEnergy('right', 90);
         energy.recordLock('right', 2);
         expect(energy.isSkillActive('right')).toBe(true);
-        expect(energy.getEnergy('right')).toBe(20);
-
-        // 技能持续期间本柱暂停充能，另一侧左柱不受影响
-        energy.step(2.0);
-        const pausedLock = energy.recordLock('right', 2);
-        expect(pausedLock.pausedBySkill).toBe(true);
-        expect(pausedLock.added).toBe(0);
-        expect(pausedLock.triggered).toBe(false);
-        expect(energy.getEnergy('right')).toBe(20);
-
-        const leftDuringRightSkill = energy.recordLock('left', 2);
-        expect(leftDuringRightSkill.pausedBySkill).toBe(false);
-        expect(leftDuringRightSkill.added).toBe(30);
-
-        // 走完剩余 3 秒（总 5 秒），右柱技能结束、恢复充能，溢出 20% 仍在
-        energy.step(3.0);
-        expect(energy.isSkillActive('right')).toBe(false);
+        expect(energy.getSnapshot('right').skillRemainingSec).toBe(5);
         expect(energy.getEnergy('right')).toBe(20);
         expect(triggers).toHaveLength(1);
 
-        // 恢复后再 +50% (4 消) -> 70%，再 +30% (2 消) -> 100% 再次触发（无溢出）
-        energy.recordLock('right', 4);
-        expect(energy.getEnergy('right')).toBe(70);
-        const secondTrigger = energy.recordLock('right', 2);
-        expect(secondTrigger.triggered).toBe(true);
-        expect(secondTrigger.overflow).toBe(0);
+        // 在第 1 轮定海持续至 2.0 秒（还剩 3.0 秒）时，右柱继续充能并在同时激活左柱「潮引」
+        energy.step(2.0);
+        expect(energy.getSnapshot('right').skillRemainingSec).toBeCloseTo(3.0, 6);
+
+        const duringSkillLock = energy.recordLock('right', 2); // 20% + 30% = 50%
+        expect(duringSkillLock.pausedBySkill).toBe(false);
+        expect(duringSkillLock.added).toBe(30);
+        expect(duringSkillLock.triggered).toBe(false);
+        expect(energy.getEnergy('right')).toBe(50);
+
+        // 左柱「潮引」与右柱「定海」可同时释放，互不阻塞
+        const leftTrigger = energy.addEnergy('left', 110);
+        expect(leftTrigger.triggered).toBe(true);
+        expect(energy.isSkillActive('left')).toBe(true);
+        expect(energy.isSkillActive('right')).toBe(true);
+
+        // t=2.0s 时右柱再来一次 4 消 (+50%) + 10% -> 累计 110%，立即触发第 2 轮定海（[2s, 7s]）
+        // 第 1 轮 [0s, 5s] 与第 2 轮 [2s, 7s] 在 [2s, 5s] 重叠，总结束时间从 5s 延长到 7s（剩余刷新为 5s，而非 3+5=8s 排队）
+        const retrigger = energy.recordLock('right', 4); // 50% + 50% = 100%
+        expect(retrigger.pausedBySkill).toBe(false);
+        expect(retrigger.triggered).toBe(true);
+        expect(retrigger.overflow).toBe(0);
         expect(energy.getEnergy('right')).toBe(0);
-        expect(triggers).toHaveLength(2);
+        expect(energy.isSkillActive('right')).toBe(true);
+        expect(energy.getSnapshot('right').skillRemainingSec).toBe(5);
+        expect(energy.getSnapshot('right').triggerCount).toBe(2);
+        expect(triggers).toHaveLength(3);
+        expect(triggers[2]).toEqual({
+            side: 'right',
+            overflow: 0,
+            durationSec: 5,
+            triggerCount: 2,
+        });
+
+        // 再推进 3.0 秒（到达 t=5.0s）：第 1 轮原定结束点已过，但因与第 2 轮重叠续期，右柱定海仍持续（剩余 2.0s），左柱也仍剩余 2.0s
+        energy.step(3.0);
+        expect(energy.isSkillActive('right')).toBe(true);
+        expect(energy.getSnapshot('right').skillRemainingSec).toBeCloseTo(2.0, 6);
+        expect(energy.isSkillActive('left')).toBe(true);
+        expect(energy.getSnapshot('left').skillRemainingSec).toBeCloseTo(2.0, 6);
+
+        // 再推进 2.0 秒（到达 t=7.0s）：双柱技能同步结束
+        energy.step(2.0);
+        expect(energy.isSkillActive('right')).toBe(false);
+        expect(energy.getSnapshot('right').skillRemainingSec).toBe(0);
+        expect(energy.isSkillActive('left')).toBe(false);
+        expect(energy.getSnapshot('left').skillRemainingSec).toBe(0);
     });
 
-    it('技能结束时若溢出本身 >= 100%，自动顺延触发下一轮；skillDurationSec=0 时不会死循环', () => {
+    it('单次注入 >= 200% 时立即按重叠方式消耗全部整百能量并保留余数；skillDurationSec=0 时不会死循环', () => {
         const energy = new PillarEnergy({ skillDurationSec: 5 });
         const triggers: SkillTriggerEvent[] = [];
         energy.onSkillTrigger((e) => triggers.push(e));
 
         const r1 = energy.addEnergy('left', 220);
         expect(r1.triggered).toBe(true);
-        expect(r1.overflow).toBe(120);
-        expect(triggers).toHaveLength(1);
-
-        const stepEvents = energy.step(5.0);
-        expect(stepEvents).toHaveLength(1);
-        expect(stepEvents[0]).toMatchObject({ side: 'left', overflow: 20, triggerCount: 2 });
+        expect(r1.overflow).toBe(20);
+        expect(triggers).toHaveLength(2);
+        expect(triggers[0]).toMatchObject({ side: 'left', overflow: 120, triggerCount: 1 });
+        expect(triggers[1]).toMatchObject({ side: 'left', overflow: 20, triggerCount: 2 });
         expect(energy.isSkillActive('left')).toBe(true);
         expect(energy.getEnergy('left')).toBe(20);
+        expect(energy.getSnapshot('left').skillRemainingSec).toBe(5);
 
         const stepEnd = energy.step(5.0);
         expect(stepEnd).toHaveLength(0);
